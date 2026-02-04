@@ -1,4 +1,5 @@
--- Base Protector V3 Enhanced - Place in StarterPlayer > StarterPlayerScripts (LocalScript)
+-- Base Protector V3 - PREMIUM SMOOTH BLACK & WHITE EDITION
+-- Place in StarterPlayer > StarterPlayerScripts (LocalScript)
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -17,8 +18,6 @@ while not LocalPlayer do
     LocalPlayer = Players.LocalPlayer
 end
 
-local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-
 -- Find Admin Remote
 local adminRemote = nil
 local notificationRemote = nil
@@ -29,8 +28,7 @@ task.spawn(function()
         local Net = Packages:WaitForChild("Net", 5)
         if Net then
             adminRemote = Net:FindFirstChild("RE/352aad5B-c786-4998-886b-3e4fa390721e")
-            if adminRemote and adminRemote:IsA("RemoteEvent") then
-            else
+            if not adminRemote then
                 for _, obj in pairs(Net:GetChildren()) do
                     if obj:IsA("RemoteEvent") and obj.Name:lower():find("352aad5") then
                         adminRemote = obj
@@ -38,7 +36,6 @@ task.spawn(function()
                     end
                 end
             end
-            
             notificationRemote = Net:FindFirstChild("RE/NotificationService/Notify")
         end
     end
@@ -55,64 +52,60 @@ end)
 
 -- Settings
 local spamKickEnabled = false
-local spamNoKickEnabled = false
+local spamNoKickEnabled = true -- ALWAYS ON
 local antiTPEnabled = false
-local autoSaveEnabled = false
 local punishedPlayers = {}
 local antiTPCooldowns = {}
 
 local priorityCommands = {"rocket"}
 local secondaryCommands = {"inverse", "tiny", "morph", "jumpscare"}
-local defenseCommand = "balloon"
-
--- Auto-Save System
-local function saveSettings()
-    if not autoSaveEnabled then return end
-    
-    local success, err = pcall(function()
-        writefile("BaseProtector_Settings.json", game:GetService("HttpService"):JSONEncode({
-            spamNoKick = spamNoKickEnabled
-        }))
-    end)
-end
-
-local function loadSettings()
-    local success, data = pcall(function()
-        if isfile("BaseProtector_Settings.json") then
-            local json = readfile("BaseProtector_Settings.json")
-            return game:GetService("HttpService"):JSONDecode(json)
-        end
-        return nil
-    end)
-    
-    if success and data then
-        spamNoKickEnabled = data.spamNoKick or false
-    end
-end
-
--- Load settings on start if auto-save was enabled
-task.spawn(function()
-    task.wait(1)
-    if pcall(function() return isfile("BaseProtector_Settings.json") end) then
-        local hasFile = isfile("BaseProtector_Settings.json")
-        if hasFile then
-            autoSaveEnabled = true
-            loadSettings()
-        end
-    end
-end)
 
 -- Helper Functions
 local function sendCommand(command, targetPlayer)
-    if not adminRemote then
-        return
-    end
-    
+    if not adminRemote then return end
     task.spawn(function()
         pcall(function()
             adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", targetPlayer, command)
         end)
     end)
+end
+
+function findMyPlot()
+    local plotsFolder = workspace:FindFirstChild("Plots")
+    if not plotsFolder then return nil end
+    
+    for _, plot in pairs(plotsFolder:GetChildren()) do
+        local plotSign = plot:FindFirstChild("PlotSign")
+        if plotSign then
+            local yourBase = plotSign:FindFirstChild("YourBase")
+            if yourBase and yourBase:IsA("BillboardGui") and yourBase.Enabled == true then
+                return plot
+            end
+        end
+    end
+    
+    local playerName = LocalPlayer.Name
+    for _, plot in pairs(plotsFolder:GetChildren()) do
+        if string.find(plot.Name, playerName) then return plot end
+        local owner = plot:FindFirstChild("Owner")
+        if owner and owner.Value == LocalPlayer then return plot end
+    end
+    
+    local character = LocalPlayer.Character
+    if character then
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            for _, plot in pairs(plotsFolder:GetChildren()) do
+                local plotPart = plot:FindFirstChild("PlotPart") or plot:FindFirstChild("Base")
+                if plotPart and plotPart:IsA("BasePart") then
+                    if (hrp.Position - plotPart.Position).Magnitude < 100 then
+                        return plot
+                    end
+                end
+            end
+        end
+    end
+    return nil
 end
 
 local function getPlayersInMyPlot()
@@ -121,28 +114,20 @@ local function getPlayersInMyPlot()
     
     local playersInPlot = {}
     local plotPosition = myPlot:GetPivot().Position
-    local plotSize = 120
     
     local decorations = myPlot:FindFirstChild("Decorations")
-    if decorations then
-        local model = decorations:FindFirstChild("Model")
-        if model then
-            plotPosition = model:GetPivot().Position
-        end
+    if decorations and decorations:FindFirstChild("Model") then
+        plotPosition = decorations.Model:GetPivot().Position
     end
     
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local distance = (hrp.Position - plotPosition).Magnitude
-                if distance < plotSize then
-                    table.insert(playersInPlot, player)
-                end
+            if hrp and (hrp.Position - plotPosition).Magnitude < 120 then
+                table.insert(playersInPlot, player)
             end
         end
     end
-    
     return playersInPlot
 end
 
@@ -156,19 +141,14 @@ local function executeAPSpam(targetUsername, shouldKick)
             break
         end
     end
-    
-    if not targetPlayer then
-        return
-    end
+    if not targetPlayer then return end
     
     sendCommand("balloon", targetPlayer)
     task.wait(0.01)
-    
     for _, cmd in ipairs(priorityCommands) do
         sendCommand(cmd, targetPlayer)
         task.wait(0.01)
     end
-    
     for _, cmd in ipairs(secondaryCommands) do
         sendCommand(cmd, targetPlayer)
         task.wait(0.01)
@@ -193,20 +173,14 @@ local function executeDefense(targetPlayerName, shouldKick)
             break
         end
     end
-    
-    if not targetPlayer then
-        return
-    end
+    if not targetPlayer then return end
     
     executeAPSpam(targetPlayerName, shouldKick)
-    
     task.delay(30, function() punishedPlayers[targetPlayerName] = nil end)
 end
 
 local function executeAntiTP(targetPlayerName)
-    if not antiTPEnabled then return end
-    if antiTPCooldowns[targetPlayerName] then return end
-    
+    if not _G.antiTPEnabled or antiTPCooldowns[targetPlayerName] then return end
     antiTPCooldowns[targetPlayerName] = true
     
     local targetPlayer = nil
@@ -216,116 +190,64 @@ local function executeAntiTP(targetPlayerName)
             break
         end
     end
-    
-    if not targetPlayer then
-        return
+    if not targetPlayer then 
+        antiTPCooldowns[targetPlayerName] = nil
+        return 
     end
     
-    sendCommand("balloon", targetPlayer)
-    task.wait(0.01)
-    sendCommand("jail", targetPlayer)
+    -- Execute commands
+    task.spawn(function()
+        sendCommand("balloon", targetPlayer)
+        task.wait(0.05)
+        sendCommand("jail", targetPlayer)
+    end)
     
     task.delay(5, function() antiTPCooldowns[targetPlayerName] = nil end)
-end
-
-function findMyPlot()
-    local plotsFolder = workspace:FindFirstChild("Plots")
-    if not plotsFolder then return nil end
-    
-    for _, plot in pairs(plotsFolder:GetChildren()) do
-        local plotSign = plot:FindFirstChild("PlotSign")
-        if plotSign then
-            local yourBase = plotSign:FindFirstChild("YourBase")
-            if yourBase and yourBase:IsA("BillboardGui") and yourBase.Enabled == true then
-                return plot
-            end
-        end
-    end
-    
-    local playerName = LocalPlayer.Name
-    for _, plot in pairs(plotsFolder:GetChildren()) do
-        if string.find(plot.Name, playerName) then
-            return plot
-        end
-        
-        local owner = plot:FindFirstChild("Owner")
-        if owner and owner.Value == LocalPlayer then
-            return plot
-        end
-    end
-    
-    local character = LocalPlayer.Character
-    if character then
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            for _, plot in pairs(plotsFolder:GetChildren()) do
-                local plotPart = plot:FindFirstChild("PlotPart") or plot:FindFirstChild("Base")
-                if plotPart and plotPart:IsA("BasePart") then
-                    local distance = (hrp.Position - plotPart.Position).Magnitude
-                    if distance < 100 then
-                        return plot
-                    end
-                end
-            end
-        end
-    end
-    
-    return nil
 end
 
 local function stripTags(str)
     return string.gsub(str, "<.->", "")
 end
 
+-- Anti-TP System (simplified)
 local function startAntiTP()
     task.spawn(function()
         task.wait(3)
-        
         local myPlot = findMyPlot()
-        if not myPlot then
-            return
-        end
-        
-        local myDecorations = myPlot:FindFirstChild("Decorations")
-        local myAnimals = myPlot:FindFirstChild("AnimalPodiums")
+        if not myPlot then return end
         
         local detectedPlayers = {}
-        
         while task.wait(0.1) do
-            if not antiTPEnabled then continue end
-            
-            if not myDecorations then
-                myDecorations = myPlot:FindFirstChild("Decorations")
-            end
-            if not myAnimals then
-                myAnimals = myPlot:FindFirstChild("AnimalPodiums")
-            end
+            if not _G.antiTPEnabled then continue end
             
             local playersInPlot = getPlayersInMyPlot()
-            
             for _, player in ipairs(playersInPlot) do
                 if player.Character then
                     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp then
+                    if hrp and not detectedPlayers[player.Name] then
+                        local myDecorations = myPlot:FindFirstChild("Decorations")
+                        local myAnimals = myPlot:FindFirstChild("AnimalPodiums")
                         local tooClose = false
                         
-                        if myDecorations then
-                            local decorModel = myDecorations:FindFirstChild("Model")
-                            if decorModel then
-                                local dist = (hrp.Position - decorModel:GetPivot().Position).Magnitude
-                                if dist < 20 then
-                                    tooClose = true
-                                end
+                        if myDecorations and myDecorations:FindFirstChild("Model") then
+                            local distance = (hrp.Position - myDecorations.Model:GetPivot().Position).Magnitude
+                            if distance < 10 then
+                                tooClose = true
                             end
                         end
                         
                         if myAnimals and not tooClose then
                             for _, animalPodium in ipairs(myAnimals:GetChildren()) do
+                                local distance = (hrp.Position - animalPodium:GetPivot().Position).Magnitude
+                                if distance < 7 then
+                                    tooClose = true
+                                    break
+                                end
+                                
                                 for _, part in ipairs(animalPodium:GetDescendants()) do
                                     if part:IsA("BasePart") then
                                         part.CanTouch = true
-                                        local touchingParts = part:GetTouchingParts()
-                                        for _, touchingPart in ipairs(touchingParts) do
+                                        for _, touchingPart in ipairs(part:GetTouchingParts()) do
                                             if touchingPart.Parent == player.Character then
                                                 tooClose = true
                                                 break
@@ -338,13 +260,10 @@ local function startAntiTP()
                             end
                         end
                         
-                        if tooClose and not detectedPlayers[player.Name] then
+                        if tooClose then
                             detectedPlayers[player.Name] = true
                             executeAntiTP(player.Name)
-                            
-                            task.delay(2, function()
-                                detectedPlayers[player.Name] = nil
-                            end)
+                            task.delay(3, function() detectedPlayers[player.Name] = nil end)
                         end
                     end
                 end
@@ -353,67 +272,48 @@ local function startAntiTP()
     end)
 end
 
+-- Base Defender (simplified)
 local function startBaseDefender()
-    local myPlot = nil
-    
+    local myPlot = findMyPlot()
     for i = 1, 10 do
-        myPlot = findMyPlot()
         if myPlot then break end
         task.wait(1)
+        myPlot = findMyPlot()
     end
-    
-    if not myPlot then 
-        return 
-    end
+    if not myPlot then return end
     
     task.spawn(function()
         if notificationRemote then
             notificationRemote.OnClientEvent:Connect(function(msg)
-                if typeof(msg) ~= "string" then return end
-                if not msg:find("Someone is stealing your") and not msg:find("Someone is robbing your") then return end
+                if typeof(msg) ~= "string" or (not msg:find("Someone is stealing your") and not msg:find("Someone is robbing your")) then return end
                 
                 task.spawn(function()
                     task.wait(0.005)
-                    
                     local playersInPlot = getPlayersInMyPlot()
-                    
-                    if #playersInPlot == 0 then
-                        return
-                    end
+                    if #playersInPlot == 0 then return end
                     
                     if #playersInPlot == 1 then
-                        local thief = playersInPlot[1]
-                        executeDefense(thief.Name, spamKickEnabled)
+                        executeDefense(playersInPlot[1].Name, spamKickEnabled)
                         return
                     end
                     
                     local myDecorations = myPlot:FindFirstChild("Decorations")
                     local myAnimals = myPlot:FindFirstChild("AnimalPodiums")
-                    
-                    local closestPlayer = nil
-                    local closestDistance = math.huge
+                    local closestPlayer, closestDistance = nil, math.huge
                     
                     for _, player in ipairs(playersInPlot) do
                         if player.Character then
                             local hrp = player.Character:FindFirstChild("HumanoidRootPart")
                             if hrp then
                                 local minDist = math.huge
-                                
-                                if myDecorations then
-                                    local decorModel = myDecorations:FindFirstChild("Model")
-                                    if decorModel then
-                                        local dist = (hrp.Position - decorModel:GetPivot().Position).Magnitude
-                                        minDist = math.min(minDist, dist)
-                                    end
+                                if myDecorations and myDecorations:FindFirstChild("Model") then
+                                    minDist = math.min(minDist, (hrp.Position - myDecorations.Model:GetPivot().Position).Magnitude)
                                 end
-                                
                                 if myAnimals then
                                     for _, animal in ipairs(myAnimals:GetChildren()) do
-                                        local dist = (hrp.Position - animal:GetPivot().Position).Magnitude
-                                        minDist = math.min(minDist, dist)
+                                        minDist = math.min(minDist, (hrp.Position - animal:GetPivot().Position).Magnitude)
                                     end
                                 end
-                                
                                 if minDist < closestDistance then
                                     closestDistance = minDist
                                     closestPlayer = player
@@ -422,83 +322,29 @@ local function startBaseDefender()
                         end
                     end
                     
-                    if closestPlayer then
-                        executeDefense(closestPlayer.Name, spamKickEnabled)
-                    else
-                        executeDefense(playersInPlot[1].Name, spamKickEnabled)
-                    end
+                    executeDefense((closestPlayer or playersInPlot[1]).Name, spamKickEnabled)
                 end)
             end)
         else
+            -- GUI fallback (simplified)
             local playerGui = LocalPlayer:WaitForChild("PlayerGui")
             local trackedTexts = {}
-            
             RunService.RenderStepped:Connect(function()
                 if not spamKickEnabled and not spamNoKickEnabled then return end
-                
                 for _, gui in ipairs(playerGui:GetDescendants()) do
-                    if (gui:IsA("TextLabel") or gui:IsA("TextButton")) and gui.Visible then
-                        local text = gui.Text
-                        if text and text ~= "" then
-                            local lowerText = string.lower(stripTags(text))
-                            if (string.find(lowerText, "stealing", 1, true) or string.find(lowerText, "robbing", 1, true)) and not trackedTexts[gui] then
-                                trackedTexts[gui] = true
-                                
-                                task.spawn(function()
-                                    task.wait(0.005)
-                                    local playersInPlot = getPlayersInMyPlot()
-                                    
-                                    if #playersInPlot == 0 then
-                                        return
-                                    end
-                                    
-                                    if #playersInPlot == 1 then
-                                        executeDefense(playersInPlot[1].Name, spamKickEnabled)
-                                        return
-                                    end
-                                    
-                                    local myDecorations = myPlot:FindFirstChild("Decorations")
-                                    local myAnimals = myPlot:FindFirstChild("AnimalPodiums")
-                                    local closestPlayer = nil
-                                    local closestDistance = math.huge
-                                    
-                                    for _, player in ipairs(playersInPlot) do
-                                        if player.Character then
-                                            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-                                            if hrp then
-                                                local minDist = math.huge
-                                                
-                                                if myDecorations then
-                                                    local decorModel = myDecorations:FindFirstChild("Model")
-                                                    if decorModel then
-                                                        minDist = math.min(minDist, (hrp.Position - decorModel:GetPivot().Position).Magnitude)
-                                                    end
-                                                end
-                                                
-                                                if myAnimals then
-                                                    for _, animal in ipairs(myAnimals:GetChildren()) do
-                                                        minDist = math.min(minDist, (hrp.Position - animal:GetPivot().Position).Magnitude)
-                                                    end
-                                                end
-                                                
-                                                if minDist < closestDistance then
-                                                    closestDistance = minDist
-                                                    closestPlayer = player
-                                                end
-                                            end
-                                        end
-                                    end
-                                    
-                                    if closestPlayer then
-                                        executeDefense(closestPlayer.Name, spamKickEnabled)
-                                    else
-                                        executeDefense(playersInPlot[1].Name, spamKickEnabled)
-                                    end
-                                end)
-                                
-                                task.delay(5, function() trackedTexts[gui] = nil end)
-                                break
-                            end
+                    if (gui:IsA("TextLabel") or gui:IsA("TextButton")) and gui.Visible and gui.Text ~= "" then
+                        local lowerText = string.lower(stripTags(gui.Text))
+                        if (string.find(lowerText, "stealing", 1, true) or string.find(lowerText, "robbing", 1, true)) and not trackedTexts[gui] then
+                            trackedTexts[gui] = true
+                            task.spawn(function()
+                                task.wait(0.005)
+                                local playersInPlot = getPlayersInMyPlot()
+                                if #playersInPlot > 0 then
+                                    executeDefense(playersInPlot[1].Name, spamKickEnabled)
+                                end
+                            end)
+                            task.delay(5, function() trackedTexts[gui] = nil end)
+                            break
                         end
                     end
                 end
@@ -507,125 +353,159 @@ local function startBaseDefender()
     end)
 end
 
--- GUI - Enhanced Black and White Theme with Custom Buttons
+-- GUI - PREMIUM BLACK & WHITE ANIMATED
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "BaseProtector"
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Top Notification Bar
+-- Top Notification Bar - SLEEK
 local notifBar = Instance.new("Frame")
 notifBar.Name = "NotificationBar"
-notifBar.Size = UDim2.new(0, 240, 0, 45)
-notifBar.Position = UDim2.new(0.5, -120, 0, 10)
+notifBar.Size = UDim2.new(0, 220, 0, 40)
+notifBar.Position = UDim2.new(0.5, -110, 0, 10)
 notifBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-notifBar.BackgroundTransparency = 0.5
+notifBar.BackgroundTransparency = 0.6
 notifBar.BorderSizePixel = 0
 notifBar.Parent = screenGui
 
 local notifCorner = Instance.new("UICorner")
-notifCorner.CornerRadius = UDim.new(0, 10)
+notifCorner.CornerRadius = UDim.new(0, 12)
 notifCorner.Parent = notifBar
 
--- Gradient Border
+-- Animated black/white gradient border
 local notifStroke = Instance.new("UIStroke")
-notifStroke.Thickness = 2.5
-notifStroke.Transparency = 0.2
+notifStroke.Thickness = 2
+notifStroke.Transparency = 0.3
 notifStroke.Parent = notifBar
 
 local notifGradient = Instance.new("UIGradient")
 notifGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 200, 255)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 100, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 100, 150))
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 100, 100)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
 })
 notifGradient.Parent = notifStroke
 
--- Animate gradient rotation (buttery smooth)
+-- Smooth rotating gradient animation
 task.spawn(function()
     while true do
-        for i = 0, 360, 1.5 do
+        for i = 0, 360, 1 do
             notifGradient.Rotation = i
-            task.wait(0.025)
+            task.wait(0.02)
         end
     end
 end)
 
--- Title with Icon
+-- Title
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -10, 0, 20)
-titleLabel.Position = UDim2.new(0, 8, 0, 3)
+titleLabel.Size = UDim2.new(1, -10, 0, 18)
+titleLabel.Position = UDim2.new(0, 8, 0, 2)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Text = "⚔️ Base Protector"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 13
+titleLabel.TextSize = 12
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = notifBar
 
--- Ping Display
+-- Ping & Player Count
 local pingLabel = Instance.new("TextLabel")
-pingLabel.Size = UDim2.new(0.5, -10, 0, 18)
-pingLabel.Position = UDim2.new(0, 8, 0, 24)
+pingLabel.Size = UDim2.new(0.5, -10, 0, 16)
+pingLabel.Position = UDim2.new(0, 8, 0, 22)
 pingLabel.BackgroundTransparency = 1
 pingLabel.Text = "0ms (SAFE)"
 pingLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
-pingLabel.TextSize = 10
+pingLabel.TextSize = 9
 pingLabel.Font = Enum.Font.GothamBold
 pingLabel.TextXAlignment = Enum.TextXAlignment.Left
 pingLabel.Parent = notifBar
 
--- Player Count
 local playerLabel = Instance.new("TextLabel")
-playerLabel.Size = UDim2.new(0.5, -10, 0, 18)
-playerLabel.Position = UDim2.new(0.5, 0, 0, 24)
+playerLabel.Size = UDim2.new(0.5, -10, 0, 16)
+playerLabel.Position = UDim2.new(0.5, 0, 0, 22)
 playerLabel.BackgroundTransparency = 1
 playerLabel.Text = "Players: 0"
 playerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-playerLabel.TextSize = 10
+playerLabel.TextSize = 9
 playerLabel.Font = Enum.Font.GothamBold
 playerLabel.TextXAlignment = Enum.TextXAlignment.Left
 playerLabel.Parent = notifBar
 
--- Control Panel
+-- Control Panel - ULTRA SMOOTH
 local controlPanel = Instance.new("Frame")
 controlPanel.Name = "ControlPanel"
-controlPanel.Size = UDim2.new(0, 180, 0, 200)
-controlPanel.Position = UDim2.new(1, -190, 0, 65)
+controlPanel.Size = UDim2.new(0, 170, 0, 150)
+controlPanel.Position = UDim2.new(1, -180, 0, 60)
 controlPanel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-controlPanel.BackgroundTransparency = 0.5
+controlPanel.BackgroundTransparency = 0.65
 controlPanel.BorderSizePixel = 0
 controlPanel.Active = true
 controlPanel.Draggable = true
 controlPanel.Parent = screenGui
 
 local panelCorner = Instance.new("UICorner")
-panelCorner.CornerRadius = UDim.new(0, 12)
+panelCorner.CornerRadius = UDim.new(0, 14)
 panelCorner.Parent = controlPanel
 
+-- Animated pulsing border
 local panelStroke = Instance.new("UIStroke")
 panelStroke.Color = Color3.fromRGB(255, 255, 255)
 panelStroke.Thickness = 2
 panelStroke.Transparency = 0.4
 panelStroke.Parent = controlPanel
 
+-- Add gradient to panel border
+local panelGradient = Instance.new("UIGradient")
+panelGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(150, 150, 150)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+})
+panelGradient.Parent = panelStroke
+
+-- Animate panel border rotation
+task.spawn(function()
+    while true do
+        for i = 0, 360, 1 do
+            panelGradient.Rotation = i
+            task.wait(0.025)
+        end
+    end
+end)
+
+-- Pulsing animation
+task.spawn(function()
+    while true do
+        TweenService:Create(panelStroke, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            Transparency = 0.2,
+            Thickness = 2.5
+        }):Play()
+        task.wait(1.5)
+        TweenService:Create(panelStroke, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            Transparency = 0.4,
+            Thickness = 2
+        }):Play()
+        task.wait(1.5)
+    end
+end)
+
 -- Title Bar
 local titleBar = Instance.new("Frame")
-titleBar.Name = "TitleBar"
-titleBar.Size = UDim2.new(1, 0, 0, 25)
-titleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-titleBar.BackgroundTransparency = 0.3
+titleBar.Size = UDim2.new(1, 0, 0, 26)
+titleBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+titleBar.BackgroundTransparency = 0.4
 titleBar.BorderSizePixel = 0
 titleBar.Parent = controlPanel
 
 local titleBarCorner = Instance.new("UICorner")
-titleBarCorner.CornerRadius = UDim.new(0, 12)
+titleBarCorner.CornerRadius = UDim.new(0, 14)
 titleBarCorner.Parent = titleBar
 
 local panelTitle = Instance.new("TextLabel")
-panelTitle.Size = UDim2.new(1, -30, 0, 25)
-panelTitle.Position = UDim2.new(0, 8, 0, 0)
+panelTitle.Size = UDim2.new(1, -30, 0, 26)
+panelTitle.Position = UDim2.new(0, 10, 0, 0)
 panelTitle.BackgroundTransparency = 1
 panelTitle.Text = "Base Defender"
 panelTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -634,139 +514,127 @@ panelTitle.Font = Enum.Font.GothamBold
 panelTitle.TextXAlignment = Enum.TextXAlignment.Left
 panelTitle.Parent = titleBar
 
--- Custom Minimize Button with Chevron Icon
+-- Minimize Button
 local minimizeButton = Instance.new("TextButton")
-minimizeButton.Name = "MinimizeButton"
-minimizeButton.Size = UDim2.new(0, 22, 0, 22)
-minimizeButton.Position = UDim2.new(1, -24, 0, 1.5)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-minimizeButton.BackgroundTransparency = 0.2
+minimizeButton.Size = UDim2.new(0, 20, 0, 20)
+minimizeButton.Position = UDim2.new(1, -23, 0, 3)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+minimizeButton.BackgroundTransparency = 0.3
+minimizeButton.Text = "─"
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.TextSize = 12
+minimizeButton.Font = Enum.Font.GothamBold
 minimizeButton.BorderSizePixel = 0
-minimizeButton.Text = ""
-minimizeButton.AutoButtonColor = false
 minimizeButton.Parent = titleBar
 
 local minimizeCorner = Instance.new("UICorner")
-minimizeCorner.CornerRadius = UDim.new(0, 5)
+minimizeCorner.CornerRadius = UDim.new(0, 6)
 minimizeCorner.Parent = minimizeButton
 
 local minimizeStroke = Instance.new("UIStroke")
-minimizeStroke.Color = Color3.fromRGB(100, 100, 100)
+minimizeStroke.Color = Color3.fromRGB(80, 80, 80)
 minimizeStroke.Thickness = 1
 minimizeStroke.Transparency = 0.5
-minimizeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 minimizeStroke.Parent = minimizeButton
 
--- Icon Container
-local iconFrame = Instance.new("Frame")
-iconFrame.Size = UDim2.new(1, 0, 1, 0)
-iconFrame.BackgroundTransparency = 1
-iconFrame.Parent = minimizeButton
-
--- Chevron Up Icon (made from custom shapes)
-local chevronLeft = Instance.new("Frame")
-chevronLeft.Name = "ChevronLeft"
-chevronLeft.Size = UDim2.new(0, 7, 0, 2)
-chevronLeft.Position = UDim2.new(0.5, -5, 0.5, 0)
-chevronLeft.AnchorPoint = Vector2.new(0.5, 0.5)
-chevronLeft.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
-chevronLeft.BorderSizePixel = 0
-chevronLeft.Rotation = -45
-chevronLeft.Parent = iconFrame
-
-local chevronLeftCorner = Instance.new("UICorner")
-chevronLeftCorner.CornerRadius = UDim.new(1, 0)
-chevronLeftCorner.Parent = chevronLeft
-
-local chevronRight = Instance.new("Frame")
-chevronRight.Name = "ChevronRight"
-chevronRight.Size = UDim2.new(0, 7, 0, 2)
-chevronRight.Position = UDim2.new(0.5, 2, 0.5, 0)
-chevronRight.AnchorPoint = Vector2.new(0.5, 0.5)
-chevronRight.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
-chevronRight.BorderSizePixel = 0
-chevronRight.Rotation = 45
-chevronRight.Parent = iconFrame
-
-local chevronRightCorner = Instance.new("UICorner")
-chevronRightCorner.CornerRadius = UDim.new(1, 0)
-chevronRightCorner.Parent = chevronRight
-
--- Smooth Hover Effects
+-- Hover effects
 minimizeButton.MouseEnter:Connect(function()
-    local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    TweenService:Create(minimizeButton, tweenInfo, {
-        BackgroundColor3 = Color3.fromRGB(55, 55, 55),
-        BackgroundTransparency = 0.1
+    TweenService:Create(minimizeButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        TextColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = 0,
+        Size = UDim2.new(0, 22, 0, 22)
     }):Play()
-    TweenService:Create(minimizeStroke, tweenInfo, {
-        Color = Color3.fromRGB(180, 180, 180), 
-        Transparency = 0.2
+    TweenService:Create(minimizeStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Transparency = 0
     }):Play()
-    TweenService:Create(chevronLeft, tweenInfo, {BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-    TweenService:Create(chevronRight, tweenInfo, {BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
 end)
 
 minimizeButton.MouseLeave:Connect(function()
-    local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    TweenService:Create(minimizeButton, tweenInfo, {
-        BackgroundColor3 = Color3.fromRGB(35, 35, 35),
-        BackgroundTransparency = 0.2
+    TweenService:Create(minimizeButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 0.3,
+        Size = UDim2.new(0, 20, 0, 20)
     }):Play()
-    TweenService:Create(minimizeStroke, tweenInfo, {
-        Color = Color3.fromRGB(100, 100, 100), 
+    TweenService:Create(minimizeStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         Transparency = 0.5
     }):Play()
-    TweenService:Create(chevronLeft, tweenInfo, {BackgroundColor3 = Color3.fromRGB(200, 200, 200)}):Play()
-    TweenService:Create(chevronRight, tweenInfo, {BackgroundColor3 = Color3.fromRGB(200, 200, 200)}):Play()
 end)
 
 -- Content Container
 local contentContainer = Instance.new("Frame")
-contentContainer.Name = "ContentContainer"
-contentContainer.Size = UDim2.new(1, -12, 1, -31)
-contentContainer.Position = UDim2.new(0, 6, 0, 28)
+contentContainer.Size = UDim2.new(1, -10, 1, -31)
+contentContainer.Position = UDim2.new(0, 5, 0, 28)
 contentContainer.BackgroundTransparency = 1
 contentContainer.Parent = controlPanel
 
--- Function to create toggle button
+-- Create toggle button function
 local function createToggleButton(text, yPos, enabled)
     local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, 0, 0, 38)
+    button.Size = UDim2.new(1, 0, 0, 36)
     button.Position = UDim2.new(0, 0, 0, yPos)
-    button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    button.BackgroundTransparency = 0.4
+    button.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    button.BackgroundTransparency = 0.5
     button.BorderSizePixel = 0
     button.Text = ""
     button.AutoButtonColor = false
+    button.ClipsDescendants = true
     button.Parent = contentContainer
     
     local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.CornerRadius = UDim.new(0, 9)
     btnCorner.Parent = button
     
+    -- Animated gradient stroke
     local btnStroke = Instance.new("UIStroke")
-    btnStroke.Color = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)
-    btnStroke.Thickness = 1.5
+    btnStroke.Color = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(60, 60, 60)
+    btnStroke.Thickness = enabled and 2 or 1.5
     btnStroke.Transparency = enabled and 0.2 or 0.6
     btnStroke.Parent = button
     
+    local btnGradient = Instance.new("UIGradient")
+    btnGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)),
+        ColorSequenceKeypoint.new(0.5, enabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)),
+        ColorSequenceKeypoint.new(1, enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80))
+    })
+    btnGradient.Parent = btnStroke
+    
+    -- Animate gradient when enabled
+    if enabled then
+        task.spawn(function()
+            while button.Parent do
+                if btnStroke.Transparency < 0.3 then
+                    for i = 0, 360, 2 do
+                        if not button.Parent then break end
+                        btnGradient.Rotation = i
+                        task.wait(0.02)
+                    end
+                else
+                    task.wait(0.1)
+                end
+            end
+        end)
+    end
+    
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -45, 1, 0)
+    label.Size = UDim2.new(1, -42, 1, 0)
     label.Position = UDim2.new(0, 6, 0, 0)
     label.BackgroundTransparency = 1
     label.Text = text
-    label.TextColor3 = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
+    label.TextColor3 = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(140, 140, 140)
     label.TextSize = 8
     label.Font = Enum.Font.GothamBold
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.TextWrapped = true
     label.Parent = button
     
+    -- Modern toggle switch
     local switchBG = Instance.new("Frame")
-    switchBG.Size = UDim2.new(0, 32, 0, 16)
-    switchBG.Position = UDim2.new(1, -36, 0.5, -8)
-    switchBG.BackgroundColor3 = enabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)
+    switchBG.Size = UDim2.new(0, 30, 0, 15)
+    switchBG.Position = UDim2.new(1, -34, 0.5, -7.5)
+    switchBG.BackgroundColor3 = enabled and Color3.fromRGB(220, 220, 220) or Color3.fromRGB(40, 40, 40)
     switchBG.BackgroundTransparency = 0.2
     switchBG.BorderSizePixel = 0
     switchBG.Parent = button
@@ -776,8 +644,8 @@ local function createToggleButton(text, yPos, enabled)
     switchBGCorner.Parent = switchBG
     
     local slider = Instance.new("Frame")
-    slider.Size = UDim2.new(0, 12, 0, 12)
-    slider.Position = enabled and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+    slider.Size = UDim2.new(0, 11, 0, 11)
+    slider.Position = enabled and UDim2.new(1, -13, 0.5, -5.5) or UDim2.new(0, 2, 0.5, -5.5)
     slider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     slider.BorderSizePixel = 0
     slider.Parent = switchBG
@@ -786,69 +654,70 @@ local function createToggleButton(text, yPos, enabled)
     sliderCorner.CornerRadius = UDim.new(1, 0)
     sliderCorner.Parent = slider
     
-    return button, btnStroke, switchBG, slider, label
+    -- Glow effect for slider when enabled
+    if enabled then
+        local sliderGlow = Instance.new("UIStroke")
+        sliderGlow.Color = Color3.fromRGB(255, 255, 255)
+        sliderGlow.Thickness = 1.5
+        sliderGlow.Transparency = 0.5
+        sliderGlow.Parent = slider
+        
+        task.spawn(function()
+            while slider.Parent do
+                if btnStroke.Transparency < 0.3 then
+                    TweenService:Create(sliderGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.2}):Play()
+                    task.wait(0.8)
+                    TweenService:Create(sliderGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.6}):Play()
+                    task.wait(0.8)
+                else
+                    task.wait(0.1)
+                end
+            end
+        end)
+    end
+    
+    -- Hover effect
+    button.MouseEnter:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.3,
+            Size = UDim2.new(1, 2, 0, 38)
+        }):Play()
+    end)
+    
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.5,
+            Size = UDim2.new(1, 0, 0, 36)
+        }):Play()
+    end)
+    
+    return button, btnStroke, switchBG, slider, label, btnGradient
 end
 
--- Create toggle buttons
-local spamKickButton, spamKickStroke, spamKickBG, spamKickSlider, spamKickLabel = createToggleButton(
-    "SPAM IF STEALING (KICK)",
-    0,
-    spamKickEnabled
-)
+-- Create buttons (removed auto-save)
+local spamKickButton, spamKickStroke, spamKickBG, spamKickSlider, spamKickLabel, spamKickGradient = createToggleButton("SPAM IF STEALING (KICK)", 0, spamKickEnabled)
+local spamNoKickButton, spamNoKickStroke, spamNoKickBG, spamNoKickSlider, spamNoKickLabel, spamNoKickGradient = createToggleButton("SPAM IF STEALING (NO KICK)", 40, spamNoKickEnabled)
+local antiTPButton, antiTPStroke, antiTPBG, antiTPSlider, antiTPLabel, antiTPGradient = createToggleButton("ANTI-TP SCAM", 80, antiTPEnabled)
 
-local spamNoKickButton, spamNoKickStroke, spamNoKickBG, spamNoKickSlider, spamNoKickLabel = createToggleButton(
-    "SPAM IF STEALING (NO KICK)",
-    42,
-    spamNoKickEnabled
-)
-
-local autoSaveButton, autoSaveStroke, autoSaveBG, autoSaveSlider, autoSaveLabel = createToggleButton(
-    "AUTO-SAVE (NO KICK)",
-    84,
-    autoSaveEnabled
-)
-
-local antiTPButton, antiTPStroke, antiTPBG, antiTPSlider, antiTPLabel = createToggleButton(
-    "ANTI-TP SCAM",
-    126,
-    antiTPEnabled
-)
-
--- Ping and Player Count Update Loop
+-- Ping update loop
 task.spawn(function()
     while true do
         task.wait(0.5)
-        
         local success, ping = pcall(function()
-            -- Data Ping shows round-trip time, so divide by 2 to get one-way ping
-            local receivePing = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 2
-            return math.floor(receivePing)
+            return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
         end)
-        
-        -- Fallback method if the above fails
-        if not success or not ping then
-            success, ping = pcall(function()
-                return math.floor(Stats.PerformanceStats.Ping:GetValue())
-            end)
-        end
         
         if success and ping then
             local status, color
-            
             if ping < 80 then
-                status = "(SAFE)"
-                color = Color3.fromRGB(100, 255, 150)
-            elseif ping >= 80 and ping < 120 then
-                status = "(SAFE)"
-                color = Color3.fromRGB(255, 220, 100)
-            elseif ping >= 120 and ping < 150 then
-                status = "(RISKY)"
-                color = Color3.fromRGB(255, 180, 100)
+                status, color = "(SAFE)", Color3.fromRGB(100, 255, 150)
+            elseif ping < 120 then
+                status, color = "(SAFE)", Color3.fromRGB(255, 220, 100)
+            elseif ping < 150 then
+                status, color = "(RISKY)", Color3.fromRGB(255, 180, 100)
             else
-                status = "(NOT SAFE)"
-                color = Color3.fromRGB(255, 100, 100)
+                status, color = "(NOT SAFE)", Color3.fromRGB(255, 100, 100)
             end
-            
             pingLabel.Text = ping .. "ms " .. status
             pingLabel.TextColor3 = color
         else
@@ -856,132 +725,129 @@ task.spawn(function()
             pingLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
         end
         
-        local playerNum = #Players:GetPlayers()
-        playerLabel.Text = "Players: " .. playerNum
+        playerLabel.Text = "Players: " .. #Players:GetPlayers()
     end
 end)
 
--- Minimize functionality (buttery smooth)
+-- Minimize animation - ULTRA SMOOTH
 local isMinimized = false
 local originalSize = controlPanel.Size
 
 minimizeButton.MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
     
-    local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    
     if isMinimized then
-        TweenService:Create(controlPanel, tweenInfo, {Size = UDim2.new(0, 180, 0, 25)}):Play()
-        TweenService:Create(chevronLeft, tweenInfo, {Rotation = 45}):Play()
-        TweenService:Create(chevronRight, tweenInfo, {Rotation = -45}):Play()
-        contentContainer.Visible = false
-    else
-        TweenService:Create(controlPanel, tweenInfo, {Size = originalSize}):Play()
-        TweenService:Create(chevronLeft, tweenInfo, {Rotation = -45}):Play()
-        TweenService:Create(chevronRight, tweenInfo, {Rotation = 45}):Play()
-        contentContainer.Visible = true
-    end
-    
-    -- Button press feedback
-    local pressInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    TweenService:Create(minimizeButton, pressInfo, {Size = UDim2.new(0, 20, 0, 20)}):Play()
-    task.wait(0.1)
-    TweenService:Create(minimizeButton, pressInfo, {Size = UDim2.new(0, 22, 0, 22)}):Play()
-end)
-
--- Toggle functions (buttery smooth)
-spamKickButton.MouseButton1Click:Connect(function()
-    spamKickEnabled = not spamKickEnabled
-    
-    local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    local color = spamKickEnabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)
-    local strokeColor = spamKickEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)
-    local sliderPos = spamKickEnabled and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    local labelColor = spamKickEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
-    
-    TweenService:Create(spamKickStroke, tweenInfo, {Color = strokeColor, Transparency = spamKickEnabled and 0.2 or 0.6}):Play()
-    TweenService:Create(spamKickBG, tweenInfo, {BackgroundColor3 = color}):Play()
-    TweenService:Create(spamKickSlider, tweenInfo, {Position = sliderPos}):Play()
-    TweenService:Create(spamKickLabel, tweenInfo, {TextColor3 = labelColor}):Play()
-end)
-
-spamNoKickButton.MouseButton1Click:Connect(function()
-    spamNoKickEnabled = not spamNoKickEnabled
-    
-    local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    local color = spamNoKickEnabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)
-    local strokeColor = spamNoKickEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)
-    local sliderPos = spamNoKickEnabled and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    local labelColor = spamNoKickEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
-    
-    TweenService:Create(spamNoKickStroke, tweenInfo, {Color = strokeColor, Transparency = spamNoKickEnabled and 0.2 or 0.6}):Play()
-    TweenService:Create(spamNoKickBG, tweenInfo, {BackgroundColor3 = color}):Play()
-    TweenService:Create(spamNoKickSlider, tweenInfo, {Position = sliderPos}):Play()
-    TweenService:Create(spamNoKickLabel, tweenInfo, {TextColor3 = labelColor}):Play()
-    
-    saveSettings()
-end)
-
-autoSaveButton.MouseButton1Click:Connect(function()
-    autoSaveEnabled = not autoSaveEnabled
-    
-    local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    local color = autoSaveEnabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)
-    local strokeColor = autoSaveEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)
-    local sliderPos = autoSaveEnabled and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    local labelColor = autoSaveEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
-    
-    TweenService:Create(autoSaveStroke, tweenInfo, {Color = strokeColor, Transparency = autoSaveEnabled and 0.2 or 0.6}):Play()
-    TweenService:Create(autoSaveBG, tweenInfo, {BackgroundColor3 = color}):Play()
-    TweenService:Create(autoSaveSlider, tweenInfo, {Position = sliderPos}):Play()
-    TweenService:Create(autoSaveLabel, tweenInfo, {TextColor3 = labelColor}):Play()
-    
-    if autoSaveEnabled then
-        saveSettings()
-    else
-        pcall(function()
-            if isfile("BaseProtector_Settings.json") then
-                delfile("BaseProtector_Settings.json")
+        -- Collapse
+        TweenService:Create(panelStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            Thickness = 1.5,
+            Transparency = 0.6
+        }):Play()
+        
+        for _, child in ipairs(contentContainer:GetChildren()) do
+            if child:IsA("TextButton") then
+                TweenService:Create(child, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 0)
+                }):Play()
             end
-        end)
+        end
+        
+        task.wait(0.15)
+        contentContainer.Visible = false
+        
+        TweenService:Create(controlPanel, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 170, 0, 26)
+        }):Play()
+        
+        minimizeButton.Text = "□"
+        
+    else
+        -- Expand
+        TweenService:Create(panelStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            Thickness = 3,
+            Transparency = 0.1
+        }):Play()
+        
+        TweenService:Create(controlPanel, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = originalSize
+        }):Play()
+        
+        minimizeButton.Text = "─"
+        
+        task.wait(0.35)
+        
+        contentContainer.Visible = true
+        for i, child in ipairs(contentContainer:GetChildren()) do
+            if child:IsA("TextButton") then
+                child.Size = UDim2.new(1, 0, 0, 0)
+                child.BackgroundTransparency = 1
+                
+                TweenService:Create(child, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Size = UDim2.new(1, 0, 0, 36),
+                    BackgroundTransparency = 0.5
+                }):Play()
+            end
+        end
+        
+        task.wait(0.3)
+        TweenService:Create(panelStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            Thickness = 2,
+            Transparency = 0.4
+        }):Play()
     end
 end)
 
-antiTPButton.MouseButton1Click:Connect(function()
-    antiTPEnabled = not antiTPEnabled
-    
-    local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    local color = antiTPEnabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)
-    local strokeColor = antiTPEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)
-    local sliderPos = antiTPEnabled and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    local labelColor = antiTPEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
-    
-    TweenService:Create(antiTPStroke, tweenInfo, {Color = strokeColor, Transparency = antiTPEnabled and 0.2 or 0.6}):Play()
-    TweenService:Create(antiTPBG, tweenInfo, {BackgroundColor3 = color}):Play()
-    TweenService:Create(antiTPSlider, tweenInfo, {Position = sliderPos}):Play()
-    TweenService:Create(antiTPLabel, tweenInfo, {TextColor3 = labelColor}):Play()
-end)
+-- Toggle function helper
+local function createToggleHandler(button, stroke, switchBG, slider, label, gradient, settingVar, settingName)
+    button.MouseButton1Click:Connect(function()
+        _G[settingName] = not _G[settingName]
+        local enabled = _G[settingName]
+        
+        -- Update the actual variables used in the code
+        if settingName == "spamKickEnabled" then
+            spamKickEnabled = enabled
+        elseif settingName == "spamNoKickEnabled" then
+            spamNoKickEnabled = enabled
+        elseif settingName == "antiTPEnabled" then
+            antiTPEnabled = enabled
+        end
+        
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        
+        TweenService:Create(stroke, tweenInfo, {
+            Color = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(60, 60, 60),
+            Thickness = enabled and 2 or 1.5,
+            Transparency = enabled and 0.2 or 0.6
+        }):Play()
+        
+        TweenService:Create(switchBG, tweenInfo, {
+            BackgroundColor3 = enabled and Color3.fromRGB(220, 220, 220) or Color3.fromRGB(40, 40, 40)
+        }):Play()
+        
+        TweenService:Create(slider, tweenInfo, {
+            Position = enabled and UDim2.new(1, -13, 0.5, -5.5) or UDim2.new(0, 2, 0.5, -5.5)
+        }):Play()
+        
+        TweenService:Create(label, tweenInfo, {
+            TextColor3 = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(140, 140, 140)
+        }):Play()
+        
+        gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)),
+            ColorSequenceKeypoint.new(0.5, enabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)),
+            ColorSequenceKeypoint.new(1, enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80))
+        })
+    end)
+end
+
+_G.spamKickEnabled = spamKickEnabled
+_G.spamNoKickEnabled = spamNoKickEnabled
+_G.antiTPEnabled = antiTPEnabled
+
+createToggleHandler(spamKickButton, spamKickStroke, spamKickBG, spamKickSlider, spamKickLabel, spamKickGradient, spamKickEnabled, "spamKickEnabled")
+-- Spam No Kick is always on, but we still create the handler for visual feedback
+createToggleHandler(spamNoKickButton, spamNoKickStroke, spamNoKickBG, spamNoKickSlider, spamNoKickLabel, spamNoKickGradient, spamNoKickEnabled, "spamNoKickEnabled")
+createToggleHandler(antiTPButton, antiTPStroke, antiTPBG, antiTPSlider, antiTPLabel, antiTPGradient, antiTPEnabled, "antiTPEnabled")
 
 startBaseDefender()
 startAntiTP()
-
--- Update GUI to reflect loaded settings
-task.spawn(function()
-    task.wait(1.5)
-    
-    if autoSaveEnabled then
-        local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        TweenService:Create(autoSaveStroke, tweenInfo, {Color = Color3.fromRGB(255, 255, 255), Transparency = 0.2}):Play()
-        TweenService:Create(autoSaveBG, tweenInfo, {BackgroundColor3 = Color3.fromRGB(200, 200, 200)}):Play()
-        TweenService:Create(autoSaveSlider, tweenInfo, {Position = UDim2.new(1, -14, 0.5, -6)}):Play()
-        TweenService:Create(autoSaveLabel, tweenInfo, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-    end
-    
-    if spamNoKickEnabled then
-        local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        TweenService:Create(spamNoKickStroke, tweenInfo, {Color = Color3.fromRGB(255, 255, 255), Transparency = 0.2}):Play()
-        TweenService:Create(spamNoKickBG, tweenInfo, {BackgroundColor3 = Color3.fromRGB(200, 200, 200)}):Play()
-        TweenService:Create(spamNoKickSlider, tweenInfo, {Position = UDim2.new(1, -14, 0.5, -6)}):Play()
-        TweenService:Create(spamNoKickLabel, tweenInfo, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-    end
-end)
