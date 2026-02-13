@@ -1,6 +1,7 @@
--- Base Protector V3 - PREMIUM SMOOTH BLACK & WHITE EDITION
+-- Base Protector V3.5 - ULTRA SPEED EDITION + CLONE ESP
 -- Place in StarterPlayer > StarterPlayerScripts (LocalScript)
--- NOW WITH INDEXED REMOTE DETECTION
+-- OPTIMIZATIONS: Plot caching, coroutine execution, instant response
+-- NEW FEATURE: Clone ESP with auto username detection
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -19,13 +20,159 @@ while not LocalPlayer do
     LocalPlayer = Players.LocalPlayer
 end
 
--- Find Admin Remote - INDEXED DETECTION METHOD
+-- ============================================
+-- SPEED OPTIMIZATION: PRE-CACHE EVERYTHING
+-- ============================================
+
 local adminRemote = nil
 local notificationRemote = nil
 
-task.spawn(function()
+-- Pre-cached references for INSTANT access
+local cachedPlot = nil
+local cachedPlotPosition = nil
+local cachedDecorations = nil
+local cachedAnimals = nil
+local lastPlotCheck = 0
+local PLOT_CACHE_DURATION = 5
 
+-- Player Cache
+local playerCache = {}
+
+Players.PlayerAdded:Connect(function(player)
+    playerCache[player.Name] = player
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    playerCache[player.Name] = nil
+    punishedPlayers[player.Name] = nil
+    antiTPCooldowns[player.Name] = nil
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+    playerCache[player.Name] = player
+end
+
+-- ============================================
+-- CLONE ESP SYSTEM
+-- ============================================
+
+local cloneEspEnabled = false
+local cloneEsps = {}
+
+local function extractUsernameFromClone(cloneName)
+    -- Pattern: "3966662909_Clone" -> Extract "3966662909"
+    local username = cloneName:match("(.+)_Clone")
+    return username
+end
+
+local function createCloneEsp(clone)
+    local username = extractUsernameFromClone(clone.Name)
+    if not username then return end
     
+    -- Find the head
+    local head = clone:FindFirstChild("Head")
+    if not head then return end
+    
+    -- Create BillboardGui
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "CloneESP"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 80, 0, 25)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
+    
+    -- Background frame
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    frame.BackgroundTransparency = 0.3
+    frame.BorderSizePixel = 0
+    frame.Parent = billboard
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = frame
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 1.5
+    stroke.Parent = frame
+    
+    -- Clone label
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "CLONE"
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 10
+    label.Font = Enum.Font.GothamBold
+    label.TextStrokeTransparency = 0.5
+    label.Parent = frame
+    
+    cloneEsps[clone] = billboard
+    
+    -- Clean up when clone is removed
+    clone.AncestryChanged:Connect(function()
+        if not clone:IsDescendantOf(workspace) then
+            if cloneEsps[clone] then
+                cloneEsps[clone]:Destroy()
+                cloneEsps[clone] = nil
+            end
+        end
+    end)
+end
+
+local function removeCloneEsp(clone)
+    if cloneEsps[clone] then
+        cloneEsps[clone]:Destroy()
+        cloneEsps[clone] = nil
+    end
+end
+
+local function updateCloneEsps()
+    if cloneEspEnabled then
+        -- Add ESPs to all existing clones
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj.Name:match("_Clone$") and obj:IsA("Model") and not cloneEsps[obj] then
+                createCloneEsp(obj)
+            end
+        end
+    else
+        -- Remove all ESPs
+        for clone, esp in pairs(cloneEsps) do
+            esp:Destroy()
+        end
+        cloneEsps = {}
+    end
+end
+
+-- Watch for new clones continuously
+workspace.ChildAdded:Connect(function(child)
+    if cloneEspEnabled and child.Name:match("_Clone$") and child:IsA("Model") then
+        task.wait(0.1) -- Wait for head to load
+        createCloneEsp(child)
+    end
+end)
+
+-- Monitor existing clones every 2 seconds for any we might have missed
+task.spawn(function()
+    while task.wait(2) do
+        if cloneEspEnabled then
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if obj.Name:match("_Clone$") and obj:IsA("Model") and not cloneEsps[obj] then
+                    createCloneEsp(obj)
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================
+-- REMOTE DETECTION
+-- ============================================
+
+task.spawn(function()
     local Packages = ReplicatedStorage:WaitForChild("Packages", 10)
     if not Packages then
         warn("❌ Packages folder not found!")
@@ -38,24 +185,19 @@ task.spawn(function()
         return
     end
     
-
     local children = Net:GetChildren()
-    
-    -- Build the mapping: each remote points to the next one
     local remoteMap = {}
+    
     for i, obj in ipairs(children) do
         if obj:IsA("RemoteEvent") then
             local nextIndex = i + 1
             local nextObj = children[nextIndex]
             if nextObj and nextObj:IsA("RemoteEvent") then
                 remoteMap[obj] = nextObj
-
             end
         end
     end
     
-
-    -- Find which remote POINTS TO DealWithThis
     for remote, nextRemote in pairs(remoteMap) do
         if nextRemote.Name == "RE/AdminPanelService/DealWithThis" then
             adminRemote = remote
@@ -63,8 +205,6 @@ task.spawn(function()
         end
     end
     
-
-    -- Find what NotificationService/Notify POINTS TO (the next remote)
     for remote, nextRemote in pairs(remoteMap) do
         if remote.Name:match("NotificationService") or remote.Name:match("Notify") then
             notificationRemote = nextRemote
@@ -76,45 +216,44 @@ task.spawn(function()
         warn("⚠️ Notification remote not found - will use GUI fallback method")
     end
     
-    if adminRemote then
-
-    else
+    if not adminRemote then
         warn("❌ Base Protector failed - admin remote not found")
     end
 end)
 
 -- Settings
 local spamKickEnabled = false
-local spamNoKickEnabled = true -- ALWAYS ON
+local spamNoKickEnabled = true
 local antiTPEnabled = false
 local punishedPlayers = {}
 local antiTPCooldowns = {}
 
-local priorityCommands = {"rocket"}
-local secondaryCommands = {"inverse", "tiny", "morph", "jumpscare"}
+-- ============================================
+-- OPTIMIZED FUNCTIONS
+-- ============================================
 
--- Helper Functions
 local function sendCommand(command, targetPlayer)
-    if not adminRemote then 
-        warn("⚠️ Cannot send command - admin remote not found")
-        return 
-    end
-    
-    -- Send immediately for fastest execution
-    pcall(function()
-        adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", targetPlayer, command)
-    end)
+    if not adminRemote then return end
+    adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", targetPlayer, command)
 end
 
-function findMyPlot()
+local function updatePlotCache()
     local plotsFolder = workspace:FindFirstChild("Plots")
-    if not plotsFolder then return nil end
+    if not plotsFolder then 
+        cachedPlot = nil
+        return nil 
+    end
     
     for _, plot in pairs(plotsFolder:GetChildren()) do
         local plotSign = plot:FindFirstChild("PlotSign")
         if plotSign then
             local yourBase = plotSign:FindFirstChild("YourBase")
             if yourBase and yourBase:IsA("BillboardGui") and yourBase.Enabled == true then
+                cachedPlot = plot
+                cachedPlotPosition = plot:GetPivot().Position
+                cachedDecorations = plot:FindFirstChild("Decorations")
+                cachedAnimals = plot:FindFirstChild("AnimalPodiums")
+                lastPlotCheck = tick()
                 return plot
             end
         end
@@ -122,38 +261,46 @@ function findMyPlot()
     
     local playerName = LocalPlayer.Name
     for _, plot in pairs(plotsFolder:GetChildren()) do
-        if string.find(plot.Name, playerName) then return plot end
+        if string.find(plot.Name, playerName) then 
+            cachedPlot = plot
+            cachedPlotPosition = plot:GetPivot().Position
+            cachedDecorations = plot:FindFirstChild("Decorations")
+            cachedAnimals = plot:FindFirstChild("AnimalPodiums")
+            lastPlotCheck = tick()
+            return plot 
+        end
         local owner = plot:FindFirstChild("Owner")
-        if owner and owner.Value == LocalPlayer then return plot end
-    end
-    
-    local character = LocalPlayer.Character
-    if character then
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            for _, plot in pairs(plotsFolder:GetChildren()) do
-                local plotPart = plot:FindFirstChild("PlotPart") or plot:FindFirstChild("Base")
-                if plotPart and plotPart:IsA("BasePart") then
-                    if (hrp.Position - plotPart.Position).Magnitude < 100 then
-                        return plot
-                    end
-                end
-            end
+        if owner and owner.Value == LocalPlayer then 
+            cachedPlot = plot
+            cachedPlotPosition = plot:GetPivot().Position
+            cachedDecorations = plot:FindFirstChild("Decorations")
+            cachedAnimals = plot:FindFirstChild("AnimalPodiums")
+            lastPlotCheck = tick()
+            return plot 
         end
     end
+    
+    cachedPlot = nil
     return nil
 end
 
+function findMyPlot()
+    local currentTime = tick()
+    if cachedPlot and (currentTime - lastPlotCheck) < PLOT_CACHE_DURATION then
+        return cachedPlot
+    end
+    return updatePlotCache()
+end
+
 local function getPlayersInMyPlot()
-    local myPlot = findMyPlot()
+    local myPlot = cachedPlot or findMyPlot()
     if not myPlot then return {} end
     
     local playersInPlot = {}
-    local plotPosition = myPlot:GetPivot().Position
+    local plotPosition = cachedPlotPosition
     
-    local decorations = myPlot:FindFirstChild("Decorations")
-    if decorations and decorations:FindFirstChild("Model") then
-        plotPosition = decorations.Model:GetPivot().Position
+    if cachedDecorations and cachedDecorations:FindFirstChild("Model") then
+        plotPosition = cachedDecorations.Model:GetPivot().Position
     end
     
     for _, player in ipairs(Players:GetPlayers()) do
@@ -170,23 +317,16 @@ end
 local function executeAPSpam(targetUsername, shouldKick)
     if not targetUsername or targetUsername == "" then return end
     
-    local targetPlayer = nil
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Name == targetUsername then
-            targetPlayer = player
-            break
-        end
-    end
+    local targetPlayer = playerCache[targetUsername]
     if not targetPlayer then return end
     
-    -- Send ALL commands instantly with no delays
-    sendCommand("balloon", targetPlayer)
-    for _, cmd in ipairs(priorityCommands) do
-        sendCommand(cmd, targetPlayer)
-    end
-    for _, cmd in ipairs(secondaryCommands) do
-        sendCommand(cmd, targetPlayer)
-    end
+    -- PARALLEL EXECUTION with coroutine.wrap (faster)
+    coroutine.wrap(function() sendCommand("balloon", targetPlayer) end)()
+    coroutine.wrap(function() sendCommand("rocket", targetPlayer) end)()
+    coroutine.wrap(function() sendCommand("inverse", targetPlayer) end)()
+    coroutine.wrap(function() sendCommand("tiny", targetPlayer) end)()
+    coroutine.wrap(function() sendCommand("morph", targetPlayer) end)()
+    coroutine.wrap(function() sendCommand("jumpscare", targetPlayer) end)()
     
     if shouldKick then
         task.wait(0.1)
@@ -195,30 +335,19 @@ local function executeAPSpam(targetUsername, shouldKick)
 end
 
 local function executeDefense(targetPlayerName, shouldKick)
-
-    
     if (shouldKick and not spamKickEnabled) or (not shouldKick and not spamNoKickEnabled) then 
-
         return 
     end
     
     if punishedPlayers[targetPlayerName] then 
-
         return 
     end
     
     punishedPlayers[targetPlayerName] = true
-
     
-    local targetPlayer = nil
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Name == targetPlayerName then
-            targetPlayer = player
-            break
-        end
-    end
+    local targetPlayer = playerCache[targetPlayerName]
     if not targetPlayer then 
-
+        punishedPlayers[targetPlayerName] = nil
         return 
     end
     
@@ -230,37 +359,66 @@ local function executeAntiTP(targetPlayerName)
     if not _G.antiTPEnabled or antiTPCooldowns[targetPlayerName] then return end
     antiTPCooldowns[targetPlayerName] = true
     
-    local targetPlayer = nil
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Name == targetPlayerName then
-            targetPlayer = player
-            break
-        end
-    end
+    local targetPlayer = playerCache[targetPlayerName]
     if not targetPlayer then 
         antiTPCooldowns[targetPlayerName] = nil
         return 
     end
     
-    -- Execute commands
-    task.spawn(function()
-        sendCommand("balloon", targetPlayer)
-        task.wait(0.05)
-        sendCommand("jail", targetPlayer)
-    end)
+    coroutine.wrap(function() sendCommand("balloon", targetPlayer) end)()
+    coroutine.wrap(function() sendCommand("jail", targetPlayer) end)()
     
     task.delay(5, function() antiTPCooldowns[targetPlayerName] = nil end)
 end
 
-local function stripTags(str)
-    return string.gsub(str, "<.->", "")
+local function getClosestPlayerToBrainrots()
+    local playersInPlot = getPlayersInMyPlot()
+    if #playersInPlot == 0 then return nil end
+    
+    local myPlot = cachedPlot or findMyPlot()
+    if not myPlot then return nil end
+    
+    local myDecorations = cachedDecorations
+    local myAnimals = cachedAnimals
+    local closestPlayer, closestDistance = nil, math.huge
+    
+    for _, player in ipairs(playersInPlot) do
+        if player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local minDist = math.huge
+                
+                if myDecorations and myDecorations:FindFirstChild("Model") then
+                    minDist = (hrp.Position - myDecorations.Model:GetPivot().Position).Magnitude
+                end
+                
+                if myAnimals then
+                    for _, animal in ipairs(myAnimals:GetChildren()) do
+                        local dist = (hrp.Position - animal:GetPivot().Position).Magnitude
+                        if dist < minDist then
+                            minDist = dist
+                        end
+                    end
+                end
+                
+                if minDist < closestDistance then
+                    closestDistance = minDist
+                    closestPlayer = player
+                end
+            end
+        end
+    end
+    
+    return closestPlayer
 end
 
--- Anti-TP System (simplified)
+-- Anti-TP System
 local function startAntiTP()
     task.spawn(function()
         task.wait(3)
-        local myPlot = findMyPlot()
+        updatePlotCache()
+        
+        local myPlot = cachedPlot
         if not myPlot then return end
         
         local detectedPlayers = {}
@@ -272,38 +430,20 @@ local function startAntiTP()
                 if player.Character then
                     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
                     if hrp and not detectedPlayers[player.Name] then
-                        local myDecorations = myPlot:FindFirstChild("Decorations")
-                        local myAnimals = myPlot:FindFirstChild("AnimalPodiums")
                         local tooClose = false
                         
-                        if myDecorations and myDecorations:FindFirstChild("Model") then
-                            local distance = (hrp.Position - myDecorations.Model:GetPivot().Position).Magnitude
-                            if distance < 10 then
+                        if cachedDecorations and cachedDecorations:FindFirstChild("Model") then
+                            if (hrp.Position - cachedDecorations.Model:GetPivot().Position).Magnitude < 10 then
                                 tooClose = true
                             end
                         end
                         
-                        if myAnimals and not tooClose then
-                            for _, animalPodium in ipairs(myAnimals:GetChildren()) do
-                                local distance = (hrp.Position - animalPodium:GetPivot().Position).Magnitude
-                                if distance < 7 then
+                        if cachedAnimals and not tooClose then
+                            for _, animalPodium in ipairs(cachedAnimals:GetChildren()) do
+                                if (hrp.Position - animalPodium:GetPivot().Position).Magnitude < 7 then
                                     tooClose = true
                                     break
                                 end
-                                
-                                for _, part in ipairs(animalPodium:GetDescendants()) do
-                                    if part:IsA("BasePart") then
-                                        part.CanTouch = true
-                                        for _, touchingPart in ipairs(part:GetTouchingParts()) do
-                                            if touchingPart.Parent == player.Character then
-                                                tooClose = true
-                                                break
-                                            end
-                                        end
-                                        if tooClose then break end
-                                    end
-                                end
-                                if tooClose then break end
                             end
                         end
                         
@@ -319,95 +459,121 @@ local function startAntiTP()
     end)
 end
 
--- Base Defender (simplified)
+-- Base Defender (OPTIMIZED)
 local function startBaseDefender()
-    local myPlot = findMyPlot()
+    updatePlotCache()
+    
+    local myPlot = cachedPlot
     for i = 1, 10 do
         if myPlot then break end
         task.wait(1)
-        myPlot = findMyPlot()
+        updatePlotCache()
+        myPlot = cachedPlot
     end
     if not myPlot then return end
     
     task.spawn(function()
         if notificationRemote then
-
             notificationRemote.OnClientEvent:Connect(function(msg)
-
-                
-                if typeof(msg) ~= "string" or (not msg:find("Someone is stealing your") and not msg:find("Someone is robbing your")) then 
-
+                if type(msg) ~= "string" then return end
+                if not (msg:find("Someone is stealing your") or msg:find("Someone is robbing your")) then 
                     return 
                 end
                 
-
-                
                 task.spawn(function()
-                    -- Execute immediately, no delays
                     local playersInPlot = getPlayersInMyPlot()
-
                     
-                    if #playersInPlot == 0 then 
-
-                        return 
-                    end
+                    if #playersInPlot == 0 then return end
+                    
+                    local totalOtherPlayers = #Players:GetPlayers() - 1
                     
                     if #playersInPlot == 1 then
                         executeDefense(playersInPlot[1].Name, spamKickEnabled)
                         return
                     end
                     
-                    local myDecorations = myPlot:FindFirstChild("Decorations")
-                    local myAnimals = myPlot:FindFirstChild("AnimalPodiums")
-                    local closestPlayer, closestDistance = nil, math.huge
-                    
-                    for _, player in ipairs(playersInPlot) do
-                        if player.Character then
-                            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-                            if hrp then
-                                local minDist = math.huge
-                                if myDecorations and myDecorations:FindFirstChild("Model") then
-                                    minDist = math.min(minDist, (hrp.Position - myDecorations.Model:GetPivot().Position).Magnitude)
-                                end
-                                if myAnimals then
-                                    for _, animal in ipairs(myAnimals:GetChildren()) do
-                                        minDist = math.min(minDist, (hrp.Position - animal:GetPivot().Position).Magnitude)
-                                    end
-                                end
-                                if minDist < closestDistance then
-                                    closestDistance = minDist
-                                    closestPlayer = player
+                    if totalOtherPlayers == 2 and #playersInPlot == 2 then
+                        local player1 = playersInPlot[1]
+                        local player2 = playersInPlot[2]
+                        
+                        local dist1 = math.huge
+                        local dist2 = math.huge
+                        
+                        if player1.Character and player1.Character:FindFirstChild("HumanoidRootPart") then
+                            local hrp1 = player1.Character.HumanoidRootPart
+                            
+                            if cachedDecorations and cachedDecorations:FindFirstChild("Model") then
+                                dist1 = (hrp1.Position - cachedDecorations.Model:GetPivot().Position).Magnitude
+                            end
+                            if cachedAnimals then
+                                for _, animal in ipairs(cachedAnimals:GetChildren()) do
+                                    local d = (hrp1.Position - animal:GetPivot().Position).Magnitude
+                                    if d < dist1 then dist1 = d end
                                 end
                             end
                         end
+                        
+                        if player2.Character and player2.Character:FindFirstChild("HumanoidRootPart") then
+                            local hrp2 = player2.Character.HumanoidRootPart
+                            
+                            if cachedDecorations and cachedDecorations:FindFirstChild("Model") then
+                                dist2 = (hrp2.Position - cachedDecorations.Model:GetPivot().Position).Magnitude
+                            end
+                            if cachedAnimals then
+                                for _, animal in ipairs(cachedAnimals:GetChildren()) do
+                                    local d = (hrp2.Position - animal:GetPivot().Position).Magnitude
+                                    if d < dist2 then dist2 = d end
+                                end
+                            end
+                        end
+                        
+                        local closestPlayer = dist1 < dist2 and player1 or player2
+                        local fartherPlayer = dist1 < dist2 and player2 or player1
+                        
+                        if closestPlayer then
+                            coroutine.wrap(function() sendCommand("balloon", closestPlayer) end)()
+                            coroutine.wrap(function() sendCommand("ragdoll", closestPlayer) end)()
+                            punishedPlayers[closestPlayer.Name] = true
+                            task.delay(30, function() punishedPlayers[closestPlayer.Name] = nil end)
+                        end
+                        
+                        if fartherPlayer then
+                            coroutine.wrap(function() sendCommand("rocket", fartherPlayer) end)()
+                            coroutine.wrap(function() sendCommand("inverse", fartherPlayer) end)()
+                            coroutine.wrap(function() sendCommand("jumpscare", fartherPlayer) end)()
+                            coroutine.wrap(function() sendCommand("morph", fartherPlayer) end)()
+                            punishedPlayers[fartherPlayer.Name] = true
+                            task.delay(30, function() punishedPlayers[fartherPlayer.Name] = nil end)
+                        end
+                        
+                        return
                     end
                     
-                    executeDefense((closestPlayer or playersInPlot[1]).Name, spamKickEnabled)
+                    local closestPlayer = getClosestPlayerToBrainrots()
+                    if closestPlayer then
+                        executeDefense(closestPlayer.Name, spamKickEnabled)
+                    elseif #playersInPlot > 0 then
+                        executeDefense(playersInPlot[1].Name, spamKickEnabled)
+                    end
                 end)
             end)
         else
             -- GUI fallback method
-            print("⚠️ Using GUI fallback for stealing detection (notification remote not available)")
             local playerGui = LocalPlayer:WaitForChild("PlayerGui")
             local trackedTexts = {}
             
-            RunService.RenderStepped:Connect(function()
+            RunService.Heartbeat:Connect(function()
                 if not spamKickEnabled and not spamNoKickEnabled then return end
                 
                 for _, gui in ipairs(playerGui:GetDescendants()) do
                     if (gui:IsA("TextLabel") or gui:IsA("TextButton")) and gui.Visible and gui.Text ~= "" then
-                        local lowerText = string.lower(stripTags(gui.Text))
+                        local lowerText = string.lower(gui.Text:gsub("<.->", ""))
                         
-                        if (string.find(lowerText, "stealing", 1, true) or string.find(lowerText, "robbing", 1, true)) and not trackedTexts[gui] then
+                        if (lowerText:find("stealing", 1, true) or lowerText:find("robbing", 1, true)) and not trackedTexts[gui] then
                             trackedTexts[gui] = true
-                            print("📨 GUI Detection: Found stealing text in GUI")
-                            print("   Text: " .. gui.Text)
                             
                             task.spawn(function()
-                                -- Execute immediately, no delays
                                 local playersInPlot = getPlayersInMyPlot()
-            
-                                
                                 if #playersInPlot > 0 then
                                     executeDefense(playersInPlot[1].Name, spamKickEnabled)
                                 end
@@ -419,512 +585,942 @@ local function startBaseDefender()
                     end
                 end
             end)
-            
-            print("✅ GUI fallback stealing detection active")
         end
     end)
 end
 
--- GUI - PREMIUM BLACK & WHITE ANIMATED
+-- ============================================
+-- MAIN GUI - CYBER DEFENSE
+-- ============================================
+
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BaseProtector"
+screenGui.Name = "CyberDefense"
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Top Notification Bar - SLEEK
-local notifBar = Instance.new("Frame")
-notifBar.Name = "NotificationBar"
-notifBar.Size = UDim2.new(0, 220, 0, 40)
-notifBar.Position = UDim2.new(0.5, -110, 0, 10)
-notifBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-notifBar.BackgroundTransparency = 0.6
-notifBar.BorderSizePixel = 0
-notifBar.Parent = screenGui
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainContainer"
+mainFrame.Size = UDim2.new(0, 200, 0, 250)
+mainFrame.Position = UDim2.new(1, -220, 0.5, -125)
+mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+mainFrame.BackgroundTransparency = 0.15
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
 
-local notifCorner = Instance.new("UICorner")
-notifCorner.CornerRadius = UDim.new(0, 12)
-notifCorner.Parent = notifBar
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 20)
+mainCorner.Parent = mainFrame
 
--- Animated black/white gradient border
-local notifStroke = Instance.new("UIStroke")
-notifStroke.Thickness = 2
-notifStroke.Transparency = 0.3
-notifStroke.Parent = notifBar
+-- Animated Border
+local neonStroke = Instance.new("UIStroke")
+neonStroke.Color = Color3.fromRGB(255, 255, 255)
+neonStroke.Thickness = 3
+neonStroke.Transparency = 0
+neonStroke.Parent = mainFrame
 
-local notifGradient = Instance.new("UIGradient")
-notifGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 100, 100)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
-})
-notifGradient.Parent = notifStroke
-
--- Smooth rotating gradient animation
+-- Pulsing effect (white to gray)
 task.spawn(function()
-    while true do
-        for i = 0, 360, 1 do
-            notifGradient.Rotation = i
-            task.wait(0.02)
-        end
-    end
-end)
-
--- Title
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -10, 0, 18)
-titleLabel.Position = UDim2.new(0, 8, 0, 2)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "⚔️ Base Protector"
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 12
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.Parent = notifBar
-
--- Ping & Player Count
-local pingLabel = Instance.new("TextLabel")
-pingLabel.Size = UDim2.new(0.5, -10, 0, 16)
-pingLabel.Position = UDim2.new(0, 8, 0, 22)
-pingLabel.BackgroundTransparency = 1
-pingLabel.Text = "0ms (SAFE)"
-pingLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
-pingLabel.TextSize = 9
-pingLabel.Font = Enum.Font.GothamBold
-pingLabel.TextXAlignment = Enum.TextXAlignment.Left
-pingLabel.Parent = notifBar
-
-local playerLabel = Instance.new("TextLabel")
-playerLabel.Size = UDim2.new(0.5, -10, 0, 16)
-playerLabel.Position = UDim2.new(0.5, 0, 0, 22)
-playerLabel.BackgroundTransparency = 1
-playerLabel.Text = "Players: 0"
-playerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-playerLabel.TextSize = 9
-playerLabel.Font = Enum.Font.GothamBold
-playerLabel.TextXAlignment = Enum.TextXAlignment.Left
-playerLabel.Parent = notifBar
-
--- Control Panel - ULTRA SMOOTH
-local controlPanel = Instance.new("Frame")
-controlPanel.Name = "ControlPanel"
-controlPanel.Size = UDim2.new(0, 170, 0, 150)
-controlPanel.Position = UDim2.new(1, -180, 0, 60)
-controlPanel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-controlPanel.BackgroundTransparency = 0.65
-controlPanel.BorderSizePixel = 0
-controlPanel.Active = true
-controlPanel.Draggable = true
-controlPanel.Parent = screenGui
-
-local panelCorner = Instance.new("UICorner")
-panelCorner.CornerRadius = UDim.new(0, 14)
-panelCorner.Parent = controlPanel
-
--- Animated pulsing border
-local panelStroke = Instance.new("UIStroke")
-panelStroke.Color = Color3.fromRGB(255, 255, 255)
-panelStroke.Thickness = 2
-panelStroke.Transparency = 0.4
-panelStroke.Parent = controlPanel
-
--- Add gradient to panel border
-local panelGradient = Instance.new("UIGradient")
-panelGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(150, 150, 150)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
-})
-panelGradient.Parent = panelStroke
-
--- Animate panel border rotation
-task.spawn(function()
-    while true do
-        for i = 0, 360, 1 do
-            panelGradient.Rotation = i
-            task.wait(0.025)
-        end
-    end
-end)
-
--- Pulsing animation
-task.spawn(function()
-    while true do
-        TweenService:Create(panelStroke, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            Transparency = 0.2,
-            Thickness = 2.5
+    while mainFrame.Parent do
+        TweenService:Create(neonStroke, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            Color = Color3.fromRGB(150, 150, 150)
         }):Play()
-        task.wait(1.5)
-        TweenService:Create(panelStroke, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            Transparency = 0.4,
-            Thickness = 2
+        task.wait(2)
+        TweenService:Create(neonStroke, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            Color = Color3.fromRGB(255, 255, 255)
         }):Play()
-        task.wait(1.5)
+        task.wait(2)
     end
 end)
 
--- Title Bar
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 26)
-titleBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-titleBar.BackgroundTransparency = 0.4
-titleBar.BorderSizePixel = 0
-titleBar.Parent = controlPanel
+-- Glow Effect
+local glowFrame = Instance.new("ImageLabel")
+glowFrame.Name = "Glow"
+glowFrame.Size = UDim2.new(1, 40, 1, 40)
+glowFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+glowFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+glowFrame.BackgroundTransparency = 1
+glowFrame.Image = "rbxassetid://5028857084"
+glowFrame.ImageColor3 = Color3.fromRGB(255, 255, 255)
+glowFrame.ImageTransparency = 0.7
+glowFrame.ZIndex = 0
+glowFrame.Parent = mainFrame
 
-local titleBarCorner = Instance.new("UICorner")
-titleBarCorner.CornerRadius = UDim.new(0, 14)
-titleBarCorner.Parent = titleBar
+-- Header
+local header = Instance.new("Frame")
+header.Name = "Header"
+header.Size = UDim2.new(1, 0, 0, 45)
+header.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+header.BackgroundTransparency = 0.3
+header.BorderSizePixel = 0
+header.Parent = mainFrame
 
-local panelTitle = Instance.new("TextLabel")
-panelTitle.Size = UDim2.new(1, -30, 0, 26)
-panelTitle.Position = UDim2.new(0, 10, 0, 0)
-panelTitle.BackgroundTransparency = 1
-panelTitle.Text = "Base Defender"
-panelTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-panelTitle.TextSize = 11
-panelTitle.Font = Enum.Font.GothamBold
-panelTitle.TextXAlignment = Enum.TextXAlignment.Left
-panelTitle.Parent = titleBar
+local headerCorner = Instance.new("UICorner")
+headerCorner.CornerRadius = UDim.new(0, 20)
+headerCorner.Parent = header
+
+-- Logo/Icon
+local icon = Instance.new("ImageLabel")
+icon.Size = UDim2.new(0, 24, 0, 24)
+icon.Position = UDim2.new(0, 8, 0.5, -12)
+icon.BackgroundTransparency = 1
+icon.Image = "rbxassetid://7733920644"
+icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+icon.Parent = header
+
+-- Spinning icon animation
+task.spawn(function()
+    while icon.Parent do
+        icon.Rotation = (icon.Rotation + 1) % 360
+        task.wait(0.05)
+    end
+end)
+
+-- Title Text
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, -90, 0, 20)
+titleText.Position = UDim2.new(0, 38, 0, 4)
+titleText.BackgroundTransparency = 1
+titleText.Text = "CYBER DEFENSE"
+titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleText.TextSize = 11
+titleText.Font = Enum.Font.GothamBold
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Parent = header
+
+-- Subtitle
+local subtitle = Instance.new("TextLabel")
+subtitle.Size = UDim2.new(1, -90, 0, 14)
+subtitle.Position = UDim2.new(0, 38, 0, 24)
+subtitle.BackgroundTransparency = 1
+subtitle.Text = "PROTECTION ACTIVE"
+subtitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+subtitle.TextSize = 8
+subtitle.Font = Enum.Font.GothamBold
+subtitle.TextXAlignment = Enum.TextXAlignment.Left
+subtitle.Parent = header
+
+-- Pulsing subtitle
+task.spawn(function()
+    while subtitle.Parent do
+        TweenService:Create(subtitle, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            TextTransparency = 0.3
+        }):Play()
+        task.wait(1)
+        TweenService:Create(subtitle, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            TextTransparency = 0
+        }):Play()
+        task.wait(1)
+    end
+end)
 
 -- Minimize Button
-local minimizeButton = Instance.new("TextButton")
-minimizeButton.Size = UDim2.new(0, 20, 0, 20)
-minimizeButton.Position = UDim2.new(1, -23, 0, 3)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-minimizeButton.BackgroundTransparency = 0.3
-minimizeButton.Text = "─"
-minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-minimizeButton.TextSize = 12
-minimizeButton.Font = Enum.Font.GothamBold
-minimizeButton.BorderSizePixel = 0
-minimizeButton.Parent = titleBar
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Size = UDim2.new(0, 24, 0, 24)
+minimizeBtn.Position = UDim2.new(1, -32, 0.5, -12)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+minimizeBtn.BackgroundTransparency = 0.2
+minimizeBtn.Text = "─"
+minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeBtn.TextSize = 16
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.BorderSizePixel = 0
+minimizeBtn.Parent = header
 
-local minimizeCorner = Instance.new("UICorner")
-minimizeCorner.CornerRadius = UDim.new(0, 6)
-minimizeCorner.Parent = minimizeButton
+local minimizeBtnCorner = Instance.new("UICorner")
+minimizeBtnCorner.CornerRadius = UDim.new(1, 0)
+minimizeBtnCorner.Parent = minimizeBtn
 
-local minimizeStroke = Instance.new("UIStroke")
-minimizeStroke.Color = Color3.fromRGB(80, 80, 80)
-minimizeStroke.Thickness = 1
-minimizeStroke.Transparency = 0.5
-minimizeStroke.Parent = minimizeButton
-
--- Hover effects
-minimizeButton.MouseEnter:Connect(function()
-    TweenService:Create(minimizeButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        TextColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0,
-        Size = UDim2.new(0, 22, 0, 22)
-    }):Play()
-    TweenService:Create(minimizeStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        Transparency = 0
-    }):Play()
+minimizeBtn.MouseEnter:Connect(function()
+    TweenService:Create(minimizeBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0, Size = UDim2.new(0, 28, 0, 28)}):Play()
 end)
 
-minimizeButton.MouseLeave:Connect(function()
-    TweenService:Create(minimizeButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        BackgroundTransparency = 0.3,
-        Size = UDim2.new(0, 20, 0, 20)
-    }):Play()
-    TweenService:Create(minimizeStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        Transparency = 0.5
-    }):Play()
+minimizeBtn.MouseLeave:Connect(function()
+    TweenService:Create(minimizeBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.2, Size = UDim2.new(0, 24, 0, 24)}):Play()
 end)
 
--- Content Container
-local contentContainer = Instance.new("Frame")
-contentContainer.Size = UDim2.new(1, -10, 1, -31)
-contentContainer.Position = UDim2.new(0, 5, 0, 28)
-contentContainer.BackgroundTransparency = 1
-contentContainer.Parent = controlPanel
+-- Stats Section
+local statsFrame = Instance.new("Frame")
+statsFrame.Size = UDim2.new(1, -16, 0, 44)
+statsFrame.Position = UDim2.new(0, 8, 0, 53)
+statsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+statsFrame.BackgroundTransparency = 0.4
+statsFrame.BorderSizePixel = 0
+statsFrame.Parent = mainFrame
 
--- Create toggle button function
-local function createToggleButton(text, yPos, enabled)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(1, 0, 0, 36)
-    button.Position = UDim2.new(0, 0, 0, yPos)
-    button.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    button.BackgroundTransparency = 0.5
-    button.BorderSizePixel = 0
-    button.Text = ""
-    button.AutoButtonColor = false
-    button.ClipsDescendants = true
-    button.Parent = contentContainer
-    
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 9)
-    btnCorner.Parent = button
-    
-    -- Animated gradient stroke
-    local btnStroke = Instance.new("UIStroke")
-    btnStroke.Color = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(60, 60, 60)
-    btnStroke.Thickness = enabled and 2 or 1.5
-    btnStroke.Transparency = enabled and 0.2 or 0.6
-    btnStroke.Parent = button
-    
-    local btnGradient = Instance.new("UIGradient")
-    btnGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)),
-        ColorSequenceKeypoint.new(0.5, enabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)),
-        ColorSequenceKeypoint.new(1, enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80))
-    })
-    btnGradient.Parent = btnStroke
-    
-    -- Animate gradient when enabled
-    if enabled then
-        task.spawn(function()
-            while button.Parent do
-                if btnStroke.Transparency < 0.3 then
-                    for i = 0, 360, 2 do
-                        if not button.Parent then break end
-                        btnGradient.Rotation = i
-                        task.wait(0.02)
-                    end
-                else
-                    task.wait(0.1)
-                end
-            end
-        end)
+local statsCorner = Instance.new("UICorner")
+statsCorner.CornerRadius = UDim.new(0, 12)
+statsCorner.Parent = statsFrame
+
+local statsStroke = Instance.new("UIStroke")
+statsStroke.Color = Color3.fromRGB(255, 255, 255)
+statsStroke.Thickness = 1
+statsStroke.Transparency = 0.6
+statsStroke.Parent = statsFrame
+
+-- Ping Display
+local pingIcon = Instance.new("TextLabel")
+pingIcon.Size = UDim2.new(0, 20, 0, 18)
+pingIcon.Position = UDim2.new(0, 6, 0, 4)
+pingIcon.BackgroundTransparency = 1
+pingIcon.Text = "⚡"
+pingIcon.TextColor3 = Color3.fromRGB(255, 255, 0)
+pingIcon.TextSize = 14
+pingIcon.Parent = statsFrame
+
+local pingLabel = Instance.new("TextLabel")
+pingLabel.Size = UDim2.new(0, 70, 0, 18)
+pingLabel.Position = UDim2.new(0, 26, 0, 4)
+pingLabel.BackgroundTransparency = 1
+pingLabel.Text = "0 ms"
+pingLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+pingLabel.TextSize = 10
+pingLabel.Font = Enum.Font.GothamBold
+pingLabel.TextXAlignment = Enum.TextXAlignment.Left
+pingLabel.Parent = statsFrame
+
+-- Player Count
+local playerIcon = Instance.new("TextLabel")
+playerIcon.Size = UDim2.new(0, 20, 0, 18)
+playerIcon.Position = UDim2.new(0, 6, 0, 22)
+playerIcon.BackgroundTransparency = 1
+playerIcon.Text = "👥"
+playerIcon.TextSize = 12
+playerIcon.Parent = statsFrame
+
+local playerLabel = Instance.new("TextLabel")
+playerLabel.Size = UDim2.new(0, 70, 0, 18)
+playerLabel.Position = UDim2.new(0, 26, 0, 22)
+playerLabel.BackgroundTransparency = 1
+playerLabel.Text = "0 Players"
+playerLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+playerLabel.TextSize = 10
+playerLabel.Font = Enum.Font.GothamBold
+playerLabel.TextXAlignment = Enum.TextXAlignment.Left
+playerLabel.Parent = statsFrame
+
+-- Status Indicator
+local statusDot = Instance.new("Frame")
+statusDot.Size = UDim2.new(0, 8, 0, 8)
+statusDot.Position = UDim2.new(1, -42, 0.5, -4)
+statusDot.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+statusDot.BorderSizePixel = 0
+statusDot.Parent = statsFrame
+
+local dotCorner = Instance.new("UICorner")
+dotCorner.CornerRadius = UDim.new(1, 0)
+dotCorner.Parent = statusDot
+
+local statusText = Instance.new("TextLabel")
+statusText.Size = UDim2.new(0, 32, 0, 18)
+statusText.Position = UDim2.new(1, -36, 0.5, -9)
+statusText.BackgroundTransparency = 1
+statusText.Text = "SAFE"
+statusText.TextColor3 = Color3.fromRGB(0, 255, 0)
+statusText.TextSize = 9
+statusText.Font = Enum.Font.GothamBold
+statusText.Parent = statsFrame
+
+-- Pulsing status dot
+task.spawn(function()
+    while statusDot.Parent do
+        TweenService:Create(statusDot, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.3}):Play()
+        task.wait(0.8)
+        TweenService:Create(statusDot, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {BackgroundTransparency = 0}):Play()
+        task.wait(0.8)
     end
+end)
+
+-- Controls Section
+local controlsFrame = Instance.new("Frame")
+controlsFrame.Size = UDim2.new(1, -16, 0, 138)
+controlsFrame.Position = UDim2.new(0, 8, 0, 105)
+controlsFrame.BackgroundTransparency = 1
+controlsFrame.Parent = mainFrame
+
+-- Modern Toggle Switch Function
+local function createModernToggle(text, position, defaultState, parent)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 0, 40)
+    container.Position = UDim2.new(0, 0, 0, position)
+    container.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+    container.BackgroundTransparency = 0.3
+    container.BorderSizePixel = 0
+    container.Parent = parent
     
+    local containerCorner = Instance.new("UICorner")
+    containerCorner.CornerRadius = UDim.new(0, 8)
+    containerCorner.Parent = container
+    
+    local containerStroke = Instance.new("UIStroke")
+    containerStroke.Color = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(60, 60, 80)
+    containerStroke.Thickness = 2
+    containerStroke.Transparency = defaultState and 0.2 or 0.7
+    containerStroke.Parent = container
+    
+    -- Label
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -42, 1, 0)
-    label.Position = UDim2.new(0, 6, 0, 0)
+    label.Size = UDim2.new(1, -56, 1, -6)
+    label.Position = UDim2.new(0, 8, 0, 3)
     label.BackgroundTransparency = 1
     label.Text = text
-    label.TextColor3 = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(140, 140, 140)
+    label.TextColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 170)
     label.TextSize = 8
     label.Font = Enum.Font.GothamBold
     label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Top
     label.TextWrapped = true
-    label.Parent = button
+    label.Parent = container
     
-    -- Modern toggle switch
-    local switchBG = Instance.new("Frame")
-    switchBG.Size = UDim2.new(0, 30, 0, 15)
-    switchBG.Position = UDim2.new(1, -34, 0.5, -7.5)
-    switchBG.BackgroundColor3 = enabled and Color3.fromRGB(220, 220, 220) or Color3.fromRGB(40, 40, 40)
-    switchBG.BackgroundTransparency = 0.2
-    switchBG.BorderSizePixel = 0
-    switchBG.Parent = button
+    -- Toggle Button
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0, 38, 0, 20)
+    toggleBtn.Position = UDim2.new(1, -44, 0.5, -10)
+    toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(40, 40, 60)
+    toggleBtn.BorderSizePixel = 0
+    toggleBtn.Text = ""
+    toggleBtn.AutoButtonColor = false
+    toggleBtn.Parent = container
     
-    local switchBGCorner = Instance.new("UICorner")
-    switchBGCorner.CornerRadius = UDim.new(1, 0)
-    switchBGCorner.Parent = switchBG
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(1, 0)
+    toggleCorner.Parent = toggleBtn
     
-    local slider = Instance.new("Frame")
-    slider.Size = UDim2.new(0, 11, 0, 11)
-    slider.Position = enabled and UDim2.new(1, -13, 0.5, -5.5) or UDim2.new(0, 2, 0.5, -5.5)
-    slider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    slider.BorderSizePixel = 0
-    slider.Parent = switchBG
+    -- Toggle Circle
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(0, 14, 0, 14)
+    circle.Position = defaultState and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+    circle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    circle.BorderSizePixel = 0
+    circle.Parent = toggleBtn
     
-    local sliderCorner = Instance.new("UICorner")
-    sliderCorner.CornerRadius = UDim.new(1, 0)
-    sliderCorner.Parent = slider
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(1, 0)
+    circleCorner.Parent = circle
     
-    -- Glow effect for slider when enabled
-    if enabled then
-        local sliderGlow = Instance.new("UIStroke")
-        sliderGlow.Color = Color3.fromRGB(255, 255, 255)
-        sliderGlow.Thickness = 1.5
-        sliderGlow.Transparency = 0.5
-        sliderGlow.Parent = slider
-        
-        task.spawn(function()
-            while slider.Parent do
-                if btnStroke.Transparency < 0.3 then
-                    TweenService:Create(sliderGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.2}):Play()
-                    task.wait(0.8)
-                    TweenService:Create(sliderGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.6}):Play()
-                    task.wait(0.8)
-                else
-                    task.wait(0.1)
-                end
-            end
-        end)
+    -- Glow effect when enabled
+    if defaultState then
+        local circleGlow = Instance.new("UIStroke")
+        circleGlow.Color = Color3.fromRGB(255, 255, 255)
+        circleGlow.Thickness = 1.5
+        circleGlow.Transparency = 0.5
+        circleGlow.Parent = circle
     end
     
-    -- Hover effect
-    button.MouseEnter:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 0.3,
-            Size = UDim2.new(1, 2, 0, 38)
+    toggleBtn.MouseButton1Click:Connect(function()
+        local newState = not defaultState
+        defaultState = newState
+        
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        
+        TweenService:Create(toggleBtn, tweenInfo, {
+            BackgroundColor3 = newState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(40, 40, 60)
         }):Play()
+        
+        TweenService:Create(circle, tweenInfo, {
+            Position = newState and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+        }):Play()
+        
+        TweenService:Create(containerStroke, tweenInfo, {
+            Color = newState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(60, 60, 80),
+            Transparency = newState and 0.2 or 0.7
+        }):Play()
+        
+        TweenService:Create(label, tweenInfo, {
+            TextColor3 = newState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 170)
+        }):Play()
+        
+        return newState
     end)
     
-    button.MouseLeave:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 0.5,
-            Size = UDim2.new(1, 0, 0, 36)
-        }):Play()
-    end)
-    
-    return button, btnStroke, switchBG, slider, label, btnGradient
+    return toggleBtn, container, containerStroke, label
 end
 
--- Create buttons
-local spamKickButton, spamKickStroke, spamKickBG, spamKickSlider, spamKickLabel, spamKickGradient = createToggleButton("SPAM IF STEALING (KICK)", 0, spamKickEnabled)
-local spamNoKickButton, spamNoKickStroke, spamNoKickBG, spamNoKickSlider, spamNoKickLabel, spamNoKickGradient = createToggleButton("SPAM IF STEALING (NO KICK)", 40, spamNoKickEnabled)
-local antiTPButton, antiTPStroke, antiTPBG, antiTPSlider, antiTPLabel, antiTPGradient = createToggleButton("ANTI-TP SCAM", 80, antiTPEnabled)
+-- Create Toggle Buttons
+local kickToggle = createModernToggle("SPAM STEAL\n(KICK)", 0, spamKickEnabled, controlsFrame)
+local noKickToggle = createModernToggle("SPAM STEAL\n(NO KICK)", 46, spamNoKickEnabled, controlsFrame)
+local antiTPToggle = createModernToggle("ANTI-TP\nSCAM", 92, antiTPEnabled, controlsFrame)
 
--- Ping update loop
+-- Toggle Click Handlers
+kickToggle.MouseButton1Click:Connect(function()
+    _G.spamKickEnabled = not _G.spamKickEnabled
+    spamKickEnabled = _G.spamKickEnabled
+end)
+
+noKickToggle.MouseButton1Click:Connect(function()
+    _G.spamNoKickEnabled = not _G.spamNoKickEnabled
+    spamNoKickEnabled = _G.spamNoKickEnabled
+end)
+
+antiTPToggle.MouseButton1Click:Connect(function()
+    _G.antiTPEnabled = not _G.antiTPEnabled
+    antiTPEnabled = _G.antiTPEnabled
+end)
+
+-- Minimize Animation
+local isMinimized = false
+local originalSize = mainFrame.Size
+
+minimizeBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    
+    if isMinimized then
+        TweenService:Create(neonStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine), {Thickness = 2, Transparency = 0.3}):Play()
+        
+        for _, child in ipairs({statsFrame, controlsFrame}) do
+            TweenService:Create(child, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                BackgroundTransparency = 1
+            }):Play()
+        end
+        
+        task.wait(0.15)
+        statsFrame.Visible = false
+        controlsFrame.Visible = false
+        
+        TweenService:Create(mainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 200, 0, 45)
+        }):Play()
+        
+        minimizeBtn.Text = "□"
+    else
+        TweenService:Create(neonStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine), {Thickness = 3, Transparency = 0}):Play()
+        
+        TweenService:Create(mainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = originalSize
+        }):Play()
+        
+        minimizeBtn.Text = "─"
+        
+        task.wait(0.35)
+        statsFrame.Visible = true
+        controlsFrame.Visible = true
+        
+        for _, child in ipairs({statsFrame, controlsFrame}) do
+            TweenService:Create(child, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                BackgroundTransparency = 0.4
+            }):Play()
+        end
+    end
+end)
+
+-- ============================================
+-- SPAM GUI (LEFT SIDE) + CLONE ESP
+-- ============================================
+
+-- Spam Closest Frame (with Clone ESP toggle)
+local spamFrame = Instance.new("Frame")
+spamFrame.Name = "SpamClosest"
+spamFrame.Size = UDim2.new(0, 180, 0, 180) -- Increased height for Clone ESP button
+spamFrame.Position = UDim2.new(0, 20, 0, 20)
+spamFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+spamFrame.BackgroundTransparency = 0.15
+spamFrame.BorderSizePixel = 0
+spamFrame.Active = true
+spamFrame.Draggable = true
+spamFrame.Parent = screenGui
+
+local spamCorner = Instance.new("UICorner")
+spamCorner.CornerRadius = UDim.new(0, 16)
+spamCorner.Parent = spamFrame
+
+local spamStroke = Instance.new("UIStroke")
+spamStroke.Color = Color3.fromRGB(255, 255, 255)
+spamStroke.Thickness = 2
+spamStroke.Transparency = 0
+spamStroke.Parent = spamFrame
+
+local spamGlow = Instance.new("ImageLabel")
+spamGlow.Size = UDim2.new(1, 30, 1, 30)
+spamGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+spamGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+spamGlow.BackgroundTransparency = 1
+spamGlow.Image = "rbxassetid://5028857084"
+spamGlow.ImageColor3 = Color3.fromRGB(255, 255, 255)
+spamGlow.ImageTransparency = 0.7
+spamGlow.ZIndex = 0
+spamGlow.Parent = spamFrame
+
+local spamHeader = Instance.new("Frame")
+spamHeader.Size = UDim2.new(1, 0, 0, 32)
+spamHeader.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+spamHeader.BackgroundTransparency = 0.3
+spamHeader.BorderSizePixel = 0
+spamHeader.Parent = spamFrame
+
+local spamHeaderCorner = Instance.new("UICorner")
+spamHeaderCorner.CornerRadius = UDim.new(0, 16)
+spamHeaderCorner.Parent = spamHeader
+
+local spamTitle = Instance.new("TextLabel")
+spamTitle.Size = UDim2.new(1, -60, 1, 0)
+spamTitle.Position = UDim2.new(0, 8, 0, 0)
+spamTitle.BackgroundTransparency = 1
+spamTitle.Text = "ADMIN SPAMMER"
+spamTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+spamTitle.TextSize = 10
+spamTitle.Font = Enum.Font.GothamBold
+spamTitle.TextXAlignment = Enum.TextXAlignment.Left
+spamTitle.Parent = spamHeader
+
+local spamMinBtn = Instance.new("TextButton")
+spamMinBtn.Size = UDim2.new(0, 20, 0, 20)
+spamMinBtn.Position = UDim2.new(1, -26, 0.5, -10)
+spamMinBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+spamMinBtn.BackgroundTransparency = 0.2
+spamMinBtn.Text = "─"
+spamMinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+spamMinBtn.TextSize = 14
+spamMinBtn.Font = Enum.Font.GothamBold
+spamMinBtn.BorderSizePixel = 0
+spamMinBtn.Parent = spamHeader
+
+local spamMinCorner = Instance.new("UICorner")
+spamMinCorner.CornerRadius = UDim.new(1, 0)
+spamMinCorner.Parent = spamMinBtn
+
+spamMinBtn.MouseEnter:Connect(function()
+    TweenService:Create(spamMinBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+end)
+
+spamMinBtn.MouseLeave:Connect(function()
+    TweenService:Create(spamMinBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.2}):Play()
+end)
+
+-- Player Dropdown
+local selectedSpamTarget = nil
+
+local dropdownBtn = Instance.new("TextButton")
+dropdownBtn.Size = UDim2.new(1, -16, 0, 30)
+dropdownBtn.Position = UDim2.new(0, 8, 0, 39)
+dropdownBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+dropdownBtn.BackgroundTransparency = 0.3
+dropdownBtn.Text = ""
+dropdownBtn.AutoButtonColor = false
+dropdownBtn.BorderSizePixel = 0
+dropdownBtn.Parent = spamFrame
+
+local dropdownCorner = Instance.new("UICorner")
+dropdownCorner.CornerRadius = UDim.new(0, 8)
+dropdownCorner.Parent = dropdownBtn
+
+local dropdownStroke = Instance.new("UIStroke")
+dropdownStroke.Color = Color3.fromRGB(255, 255, 255)
+dropdownStroke.Thickness = 1
+dropdownStroke.Transparency = 0.6
+dropdownStroke.Parent = dropdownBtn
+
+local dropdownLabel = Instance.new("TextLabel")
+dropdownLabel.Size = UDim2.new(1, -30, 1, 0)
+dropdownLabel.Position = UDim2.new(0, 8, 0, 0)
+dropdownLabel.BackgroundTransparency = 1
+dropdownLabel.Text = "Select Player..."
+dropdownLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
+dropdownLabel.TextSize = 9
+dropdownLabel.Font = Enum.Font.GothamBold
+dropdownLabel.TextXAlignment = Enum.TextXAlignment.Left
+dropdownLabel.TextTruncate = Enum.TextTruncate.AtEnd
+dropdownLabel.Parent = dropdownBtn
+
+local dropdownArrow = Instance.new("TextLabel")
+dropdownArrow.Size = UDim2.new(0, 20, 1, 0)
+dropdownArrow.Position = UDim2.new(1, -24, 0, 0)
+dropdownArrow.BackgroundTransparency = 1
+dropdownArrow.Text = "▼"
+dropdownArrow.TextColor3 = Color3.fromRGB(255, 255, 255)
+dropdownArrow.TextSize = 10
+dropdownArrow.Font = Enum.Font.GothamBold
+dropdownArrow.Parent = dropdownBtn
+
+local dropdownList = Instance.new("ScrollingFrame")
+dropdownList.Size = UDim2.new(1, -16, 0, 0)
+dropdownList.Position = UDim2.new(0, 8, 0, 71)
+dropdownList.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+dropdownList.BackgroundTransparency = 0.2
+dropdownList.BorderSizePixel = 0
+dropdownList.ScrollBarThickness = 3
+dropdownList.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+dropdownList.CanvasSize = UDim2.new(0, 0, 0, 0)
+dropdownList.Visible = false
+dropdownList.ClipsDescendants = true
+dropdownList.Parent = spamFrame
+dropdownList.ZIndex = 10
+
+local dropdownListCorner = Instance.new("UICorner")
+dropdownListCorner.CornerRadius = UDim.new(0, 8)
+dropdownListCorner.Parent = dropdownList
+
+local dropdownListStroke = Instance.new("UIStroke")
+dropdownListStroke.Color = Color3.fromRGB(255, 255, 255)
+dropdownListStroke.Thickness = 1
+dropdownListStroke.Transparency = 0.4
+dropdownListStroke.Parent = dropdownList
+
+local dropdownLayout = Instance.new("UIListLayout")
+dropdownLayout.SortOrder = Enum.SortOrder.Name
+dropdownLayout.Padding = UDim.new(0, 2)
+dropdownLayout.Parent = dropdownList
+
+local isDropdownOpen = false
+
+local function createDropdownItem(player)
+    local item = Instance.new("TextButton")
+    item.Size = UDim2.new(1, -6, 0, 28)
+    item.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+    item.BackgroundTransparency = 0.4
+    item.Text = ""
+    item.AutoButtonColor = false
+    item.BorderSizePixel = 0
+    item.Parent = dropdownList
+    item.ZIndex = 11
+    
+    local itemCorner = Instance.new("UICorner")
+    itemCorner.CornerRadius = UDim.new(0, 6)
+    itemCorner.Parent = item
+    
+    local usernameLabel = Instance.new("TextLabel")
+    usernameLabel.Size = UDim2.new(1, -10, 0, 14)
+    usernameLabel.Position = UDim2.new(0, 5, 0, 2)
+    usernameLabel.BackgroundTransparency = 1
+    usernameLabel.Text = "@" .. player.Name
+    usernameLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+    usernameLabel.TextSize = 8
+    usernameLabel.Font = Enum.Font.GothamBold
+    usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    usernameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    usernameLabel.ZIndex = 11
+    usernameLabel.Parent = item
+    
+    local displayLabel = Instance.new("TextLabel")
+    displayLabel.Size = UDim2.new(1, -10, 0, 12)
+    displayLabel.Position = UDim2.new(0, 5, 0, 14)
+    displayLabel.BackgroundTransparency = 1
+    displayLabel.Text = player.DisplayName
+    displayLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    displayLabel.TextSize = 9
+    displayLabel.Font = Enum.Font.GothamBold
+    displayLabel.TextXAlignment = Enum.TextXAlignment.Left
+    displayLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    displayLabel.ZIndex = 11
+    displayLabel.Parent = item
+    
+    item.MouseEnter:Connect(function()
+        TweenService:Create(item, TweenInfo.new(0.1), {BackgroundTransparency = 0.2}):Play()
+    end)
+    
+    item.MouseLeave:Connect(function()
+        TweenService:Create(item, TweenInfo.new(0.1), {BackgroundTransparency = 0.4}):Play()
+    end)
+    
+    item.MouseButton1Click:Connect(function()
+        selectedSpamTarget = player
+        dropdownLabel.Text = player.DisplayName
+        dropdownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        
+        isDropdownOpen = false
+        TweenService:Create(dropdownList, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(1, -16, 0, 0)
+        }):Play()
+        TweenService:Create(dropdownArrow, TweenInfo.new(0.2), {Rotation = 0}):Play()
+        task.wait(0.2)
+        dropdownList.Visible = false
+    end)
+    
+    return item
+end
+
+local function updateDropdownList()
+    for _, child in ipairs(dropdownList:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    local players = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(players, player)
+        end
+    end
+    
+    table.sort(players, function(a, b)
+        return a.DisplayName < b.DisplayName
+    end)
+    
+    for _, player in ipairs(players) do
+        createDropdownItem(player)
+    end
+    
+    dropdownList.CanvasSize = UDim2.new(0, 0, 0, dropdownLayout.AbsoluteContentSize.Y + 4)
+end
+
+dropdownBtn.MouseButton1Click:Connect(function()
+    isDropdownOpen = not isDropdownOpen
+    
+    if isDropdownOpen then
+        updateDropdownList()
+        dropdownList.Visible = true
+        
+        local targetHeight = math.min(90, dropdownLayout.AbsoluteContentSize.Y + 4)
+        TweenService:Create(dropdownList, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(1, -16, 0, targetHeight)
+        }):Play()
+        TweenService:Create(dropdownArrow, TweenInfo.new(0.2), {Rotation = 180}):Play()
+    else
+        TweenService:Create(dropdownList, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(1, -16, 0, 0)
+        }):Play()
+        TweenService:Create(dropdownArrow, TweenInfo.new(0.2), {Rotation = 0}):Play()
+        task.wait(0.2)
+        dropdownList.Visible = false
+    end
+end)
+
+Players.PlayerAdded:Connect(function()
+    if isDropdownOpen then
+        updateDropdownList()
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if selectedSpamTarget == player then
+        selectedSpamTarget = nil
+        dropdownLabel.Text = "Select Player..."
+        dropdownLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
+    end
+    if isDropdownOpen then
+        updateDropdownList()
+    end
+end)
+
+-- SPAM Button
+local spamButton = Instance.new("TextButton")
+spamButton.Size = UDim2.new(1, -16, 0, 32)
+spamButton.Position = UDim2.new(0, 8, 0, 76) -- Adjusted position
+spamButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+spamButton.BackgroundTransparency = 0.2
+spamButton.Text = "SPAM"
+spamButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+spamButton.TextSize = 12
+spamButton.Font = Enum.Font.GothamBold
+spamButton.BorderSizePixel = 0
+spamButton.Parent = spamFrame
+
+local spamBtnCorner = Instance.new("UICorner")
+spamBtnCorner.CornerRadius = UDim.new(0, 10)
+spamBtnCorner.Parent = spamButton
+
+local spamBtnStroke = Instance.new("UIStroke")
+spamBtnStroke.Color = Color3.fromRGB(200, 200, 200)
+spamBtnStroke.Thickness = 2
+spamBtnStroke.Transparency = 0.3
+spamBtnStroke.Parent = spamButton
+
+spamButton.MouseEnter:Connect(function()
+    TweenService:Create(spamButton, TweenInfo.new(0.2), {
+        BackgroundTransparency = 0,
+        Size = UDim2.new(1, -16, 0, 36)
+    }):Play()
+end)
+
+spamButton.MouseLeave:Connect(function()
+    TweenService:Create(spamButton, TweenInfo.new(0.2), {
+        BackgroundTransparency = 0.2,
+        Size = UDim2.new(1, -16, 0, 32)
+    }):Play()
+end)
+
+spamButton.MouseButton1Click:Connect(function()
+    local targetPlayer = selectedSpamTarget or getClosestPlayerToBrainrots()
+    
+    if targetPlayer then
+        executeAPSpam(targetPlayer.Name, false)
+        
+        TweenService:Create(spamButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+        task.wait(0.1)
+        TweenService:Create(spamButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+    end
+end)
+
+-- ============================================
+-- CLONE ESP TOGGLE BUTTON
+-- ============================================
+
+local cloneEspButton = Instance.new("TextButton")
+cloneEspButton.Size = UDim2.new(1, -16, 0, 32)
+cloneEspButton.Position = UDim2.new(0, 8, 0, 115) -- Below SPAM button
+cloneEspButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+cloneEspButton.BackgroundTransparency = 0.2
+cloneEspButton.Text = "CLONE ESP: OFF"
+cloneEspButton.TextColor3 = Color3.fromRGB(150, 150, 170)
+cloneEspButton.TextSize = 11
+cloneEspButton.Font = Enum.Font.GothamBold
+cloneEspButton.BorderSizePixel = 0
+cloneEspButton.Parent = spamFrame
+
+local cloneEspBtnCorner = Instance.new("UICorner")
+cloneEspBtnCorner.CornerRadius = UDim.new(0, 10)
+cloneEspBtnCorner.Parent = cloneEspButton
+
+local cloneEspBtnStroke = Instance.new("UIStroke")
+cloneEspBtnStroke.Color = Color3.fromRGB(100, 100, 120)
+cloneEspBtnStroke.Thickness = 2
+cloneEspBtnStroke.Transparency = 0.5
+cloneEspBtnStroke.Parent = cloneEspButton
+
+cloneEspButton.MouseEnter:Connect(function()
+    TweenService:Create(cloneEspButton, TweenInfo.new(0.2), {
+        BackgroundTransparency = 0,
+        Size = UDim2.new(1, -16, 0, 36)
+    }):Play()
+end)
+
+cloneEspButton.MouseLeave:Connect(function()
+    TweenService:Create(cloneEspButton, TweenInfo.new(0.2), {
+        BackgroundTransparency = 0.2,
+        Size = UDim2.new(1, -16, 0, 32)
+    }):Play()
+end)
+
+cloneEspButton.MouseButton1Click:Connect(function()
+    cloneEspEnabled = not cloneEspEnabled
+    _G.cloneEspEnabled = cloneEspEnabled
+    
+    if cloneEspEnabled then
+        cloneEspButton.Text = "CLONE ESP: ON"
+        cloneEspButton.TextColor3 = Color3.fromRGB(0, 255, 0)
+        cloneEspButton.BackgroundColor3 = Color3.fromRGB(40, 80, 40)
+        cloneEspBtnStroke.Color = Color3.fromRGB(0, 255, 0)
+        cloneEspBtnStroke.Transparency = 0.3
+    else
+        cloneEspButton.Text = "CLONE ESP: OFF"
+        cloneEspButton.TextColor3 = Color3.fromRGB(150, 150, 170)
+        cloneEspButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+        cloneEspBtnStroke.Color = Color3.fromRGB(100, 100, 120)
+        cloneEspBtnStroke.Transparency = 0.5
+    end
+    
+    updateCloneEsps()
+    
+    -- Visual feedback
+    TweenService:Create(cloneEspButton, TweenInfo.new(0.1), {Size = UDim2.new(1, -16, 0, 38)}):Play()
+    task.wait(0.1)
+    TweenService:Create(cloneEspButton, TweenInfo.new(0.2), {Size = UDim2.new(1, -16, 0, 32)}):Play()
+end)
+
+-- F Keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == Enum.KeyCode.F then
+        local targetPlayer = selectedSpamTarget or getClosestPlayerToBrainrots()
+        
+        if targetPlayer then
+            executeAPSpam(targetPlayer.Name, false)
+            
+            TweenService:Create(spamButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+            task.wait(0.1)
+            TweenService:Create(spamButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+        end
+    end
+end)
+
+-- Spam Minimize Animation
+local isSpamMinimized = false
+local spamOriginalSize = spamFrame.Size
+local spamContentElements = {dropdownBtn, dropdownList, spamButton, cloneEspButton}
+
+spamMinBtn.MouseButton1Click:Connect(function()
+    isSpamMinimized = not isSpamMinimized
+    
+    if isSpamMinimized then
+        TweenService:Create(spamStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine), {Thickness = 1.5, Transparency = 0.3}):Play()
+        
+        for _, element in ipairs(spamContentElements) do
+            TweenService:Create(element, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                BackgroundTransparency = 1
+            }):Play()
+        end
+        
+        task.wait(0.15)
+        for _, element in ipairs(spamContentElements) do
+            element.Visible = false
+        end
+        
+        TweenService:Create(spamFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 180, 0, 32)
+        }):Play()
+        
+        spamMinBtn.Text = "□"
+    else
+        TweenService:Create(spamStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine), {Thickness = 2, Transparency = 0}):Play()
+        
+        TweenService:Create(spamFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = spamOriginalSize
+        }):Play()
+        
+        spamMinBtn.Text = "─"
+        
+        task.wait(0.35)
+        dropdownBtn.Visible = true
+        spamButton.Visible = true
+        cloneEspButton.Visible = true
+        
+        TweenService:Create(dropdownBtn, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.3
+        }):Play()
+        TweenService:Create(spamButton, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.2
+        }):Play()
+        TweenService:Create(cloneEspButton, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.2
+        }):Play()
+    end
+end)
+
+-- Stats Update Loop
 task.spawn(function()
-    while true do
-        task.wait(0.5)
+    while task.wait(0.5) do
         local success, ping = pcall(function()
             return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
         end)
         
         if success and ping then
-            local status, color
+            pingLabel.Text = ping .. " ms"
+            
             if ping < 80 then
-                status, color = "(SAFE)", Color3.fromRGB(100, 255, 150)
-            elseif ping < 120 then
-                status, color = "(SAFE)", Color3.fromRGB(255, 220, 100)
+                pingLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+                statusDot.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+                statusText.Text = "SAFE"
+                statusText.TextColor3 = Color3.fromRGB(0, 255, 0)
             elseif ping < 150 then
-                status, color = "(RISKY)", Color3.fromRGB(255, 180, 100)
+                pingLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
+                statusDot.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+                statusText.Text = "WARN"
+                statusText.TextColor3 = Color3.fromRGB(255, 200, 0)
             else
-                status, color = "(NOT SAFE)", Color3.fromRGB(255, 100, 100)
+                pingLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+                statusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+                statusText.Text = "RISK"
+                statusText.TextColor3 = Color3.fromRGB(255, 50, 50)
             end
-            pingLabel.Text = ping .. "ms " .. status
-            pingLabel.TextColor3 = color
-        else
-            pingLabel.Text = "0ms (SAFE)"
-            pingLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
         end
         
-        playerLabel.Text = "Players: " .. #Players:GetPlayers()
+        local playerCount = #Players:GetPlayers()
+        playerLabel.Text = playerCount .. " Player" .. (playerCount == 1 and "" or "s")
     end
 end)
 
--- Minimize animation - ULTRA SMOOTH
-local isMinimized = false
-local originalSize = controlPanel.Size
-
-minimizeButton.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    
-    if isMinimized then
-        -- Collapse
-        TweenService:Create(panelStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            Thickness = 1.5,
-            Transparency = 0.6
-        }):Play()
-        
-        for _, child in ipairs(contentContainer:GetChildren()) do
-            if child:IsA("TextButton") then
-                TweenService:Create(child, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                    BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, 0)
-                }):Play()
-            end
-        end
-        
-        task.wait(0.15)
-        contentContainer.Visible = false
-        
-        TweenService:Create(controlPanel, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-            Size = UDim2.new(0, 170, 0, 26)
-        }):Play()
-        
-        minimizeButton.Text = "□"
-        
-    else
-        -- Expand
-        TweenService:Create(panelStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            Thickness = 3,
-            Transparency = 0.1
-        }):Play()
-        
-        TweenService:Create(controlPanel, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size = originalSize
-        }):Play()
-        
-        minimizeButton.Text = "─"
-        
-        task.wait(0.35)
-        
-        contentContainer.Visible = true
-        for i, child in ipairs(contentContainer:GetChildren()) do
-            if child:IsA("TextButton") then
-                child.Size = UDim2.new(1, 0, 0, 0)
-                child.BackgroundTransparency = 1
-                
-                TweenService:Create(child, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                    Size = UDim2.new(1, 0, 0, 36),
-                    BackgroundTransparency = 0.5
-                }):Play()
-            end
-        end
-        
-        task.wait(0.3)
-        TweenService:Create(panelStroke, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            Thickness = 2,
-            Transparency = 0.4
-        }):Play()
-    end
-end)
-
--- Toggle function helper
-local function createToggleHandler(button, stroke, switchBG, slider, label, gradient, settingVar, settingName)
-    button.MouseButton1Click:Connect(function()
-        _G[settingName] = not _G[settingName]
-        local enabled = _G[settingName]
-        
-        -- Update the actual variables used in the code
-        if settingName == "spamKickEnabled" then
-            spamKickEnabled = enabled
-        elseif settingName == "spamNoKickEnabled" then
-            spamNoKickEnabled = enabled
-        elseif settingName == "antiTPEnabled" then
-            antiTPEnabled = enabled
-        end
-        
-        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        
-        TweenService:Create(stroke, tweenInfo, {
-            Color = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(60, 60, 60),
-            Thickness = enabled and 2 or 1.5,
-            Transparency = enabled and 0.2 or 0.6
-        }):Play()
-        
-        TweenService:Create(switchBG, tweenInfo, {
-            BackgroundColor3 = enabled and Color3.fromRGB(220, 220, 220) or Color3.fromRGB(40, 40, 40)
-        }):Play()
-        
-        TweenService:Create(slider, tweenInfo, {
-            Position = enabled and UDim2.new(1, -13, 0.5, -5.5) or UDim2.new(0, 2, 0.5, -5.5)
-        }):Play()
-        
-        TweenService:Create(label, tweenInfo, {
-            TextColor3 = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(140, 140, 140)
-        }):Play()
-        
-        gradient.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80)),
-            ColorSequenceKeypoint.new(0.5, enabled and Color3.fromRGB(200, 200, 200) or Color3.fromRGB(50, 50, 50)),
-            ColorSequenceKeypoint.new(1, enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(80, 80, 80))
-        })
-    end)
-end
-
+-- Initialize global variables
 _G.spamKickEnabled = spamKickEnabled
 _G.spamNoKickEnabled = spamNoKickEnabled
 _G.antiTPEnabled = antiTPEnabled
+_G.cloneEspEnabled = cloneEspEnabled
 
-createToggleHandler(spamKickButton, spamKickStroke, spamKickBG, spamKickSlider, spamKickLabel, spamKickGradient, spamKickEnabled, "spamKickEnabled")
-createToggleHandler(spamNoKickButton, spamNoKickStroke, spamNoKickBG, spamNoKickSlider, spamNoKickLabel, spamNoKickGradient, spamNoKickEnabled, "spamNoKickEnabled")
-createToggleHandler(antiTPButton, antiTPStroke, antiTPBG, antiTPSlider, antiTPLabel, antiTPGradient, antiTPEnabled, "antiTPEnabled")
-
--- Wait for admin remote to be ready before starting systems
+-- Start Protection Systems
 task.spawn(function()
-    print("⏳ Waiting for admin remote to be ready...")
-    
-    -- Wait up to 15 seconds for remote
     local maxWait = 15
     local waited = 0
     while not adminRemote and waited < maxWait do
@@ -933,11 +1529,8 @@ task.spawn(function()
     end
     
     if adminRemote then
-        print("✅ Admin remote ready! Starting protection systems...")
+        updatePlotCache()
         startBaseDefender()
         startAntiTP()
-        print("✅ Base Protector V3 fully loaded!")
-    else
-        warn("❌ Failed to start - admin remote not found after " .. maxWait .. " seconds")
     end
 end)
