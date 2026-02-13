@@ -1,5 +1,6 @@
 -- Base Protector V3 - PREMIUM SMOOTH BLACK & WHITE EDITION
 -- Place in StarterPlayer > StarterPlayerScripts (LocalScript)
+-- NOW WITH INDEXED REMOTE DETECTION
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -18,35 +19,67 @@ while not LocalPlayer do
     LocalPlayer = Players.LocalPlayer
 end
 
--- Find Admin Remote
+-- Find Admin Remote - INDEXED DETECTION METHOD
 local adminRemote = nil
 local notificationRemote = nil
 
 task.spawn(function()
-    local Packages = ReplicatedStorage:WaitForChild("Packages", 5)
-    if Packages then
-        local Net = Packages:WaitForChild("Net", 5)
-        if Net then
-            adminRemote = Net:FindFirstChild("RE/352aad5B-c786-4998-886b-3e4fa390721e")
-            if not adminRemote then
-                for _, obj in pairs(Net:GetChildren()) do
-                    if obj:IsA("RemoteEvent") and obj.Name:lower():find("352aad5") then
-                        adminRemote = obj
-                        break
-                    end
-                end
+
+    
+    local Packages = ReplicatedStorage:WaitForChild("Packages", 10)
+    if not Packages then
+        warn("❌ Packages folder not found!")
+        return
+    end
+    
+    local Net = Packages:WaitForChild("Net", 10)
+    if not Net then
+        warn("❌ Net folder not found!")
+        return
+    end
+    
+
+    local children = Net:GetChildren()
+    
+    -- Build the mapping: each remote points to the next one
+    local remoteMap = {}
+    for i, obj in ipairs(children) do
+        if obj:IsA("RemoteEvent") then
+            local nextIndex = i + 1
+            local nextObj = children[nextIndex]
+            if nextObj and nextObj:IsA("RemoteEvent") then
+                remoteMap[obj] = nextObj
+
             end
-            notificationRemote = Net:FindFirstChild("RE/NotificationService/Notify")
         end
     end
     
-    if not adminRemote then
-        for _, obj in pairs(game:GetDescendants()) do
-            if obj:IsA("RemoteEvent") and obj.Name:lower():find("352aad5") then
-                adminRemote = obj
-                break
-            end
+
+    -- Find which remote POINTS TO DealWithThis
+    for remote, nextRemote in pairs(remoteMap) do
+        if nextRemote.Name == "RE/AdminPanelService/DealWithThis" then
+            adminRemote = remote
+            break
         end
+    end
+    
+
+    -- Find what NotificationService/Notify POINTS TO (the next remote)
+    for remote, nextRemote in pairs(remoteMap) do
+        if remote.Name:match("NotificationService") or remote.Name:match("Notify") then
+            notificationRemote = nextRemote
+            break
+        end
+    end
+    
+    if not notificationRemote then
+        warn("⚠️ Notification remote not found - will use GUI fallback method")
+    end
+    
+    if adminRemote then
+
+    else
+        warn("❌ Base Protector failed - admin remote not found")
     end
 end)
 
@@ -62,11 +95,14 @@ local secondaryCommands = {"inverse", "tiny", "morph", "jumpscare"}
 
 -- Helper Functions
 local function sendCommand(command, targetPlayer)
-    if not adminRemote then return end
-    task.spawn(function()
-        pcall(function()
-            adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", targetPlayer, command)
-        end)
+    if not adminRemote then 
+        warn("⚠️ Cannot send command - admin remote not found")
+        return 
+    end
+    
+    -- Send immediately for fastest execution
+    pcall(function()
+        adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", targetPlayer, command)
     end)
 end
 
@@ -143,28 +179,36 @@ local function executeAPSpam(targetUsername, shouldKick)
     end
     if not targetPlayer then return end
     
+    -- Send ALL commands instantly with no delays
     sendCommand("balloon", targetPlayer)
-    task.wait(0.01)
     for _, cmd in ipairs(priorityCommands) do
         sendCommand(cmd, targetPlayer)
-        task.wait(0.01)
     end
     for _, cmd in ipairs(secondaryCommands) do
         sendCommand(cmd, targetPlayer)
-        task.wait(0.01)
     end
     
     if shouldKick then
         task.wait(0.1)
-        LocalPlayer:Kick("Saved by Zenn")
+        LocalPlayer:Kick("Saved by Base Protector")
     end
 end
 
 local function executeDefense(targetPlayerName, shouldKick)
-    if (shouldKick and not spamKickEnabled) or (not shouldKick and not spamNoKickEnabled) then return end
-    if punishedPlayers[targetPlayerName] then return end
+
+    
+    if (shouldKick and not spamKickEnabled) or (not shouldKick and not spamNoKickEnabled) then 
+
+        return 
+    end
+    
+    if punishedPlayers[targetPlayerName] then 
+
+        return 
+    end
     
     punishedPlayers[targetPlayerName] = true
+
     
     local targetPlayer = nil
     for _, player in ipairs(Players:GetPlayers()) do
@@ -173,7 +217,10 @@ local function executeDefense(targetPlayerName, shouldKick)
             break
         end
     end
-    if not targetPlayer then return end
+    if not targetPlayer then 
+
+        return 
+    end
     
     executeAPSpam(targetPlayerName, shouldKick)
     task.delay(30, function() punishedPlayers[targetPlayerName] = nil end)
@@ -284,13 +331,26 @@ local function startBaseDefender()
     
     task.spawn(function()
         if notificationRemote then
+
             notificationRemote.OnClientEvent:Connect(function(msg)
-                if typeof(msg) ~= "string" or (not msg:find("Someone is stealing your") and not msg:find("Someone is robbing your")) then return end
+
+                
+                if typeof(msg) ~= "string" or (not msg:find("Someone is stealing your") and not msg:find("Someone is robbing your")) then 
+
+                    return 
+                end
+                
+
                 
                 task.spawn(function()
-                    task.wait(0.005)
+                    -- Execute immediately, no delays
                     local playersInPlot = getPlayersInMyPlot()
-                    if #playersInPlot == 0 then return end
+
+                    
+                    if #playersInPlot == 0 then 
+
+                        return 
+                    end
                     
                     if #playersInPlot == 1 then
                         executeDefense(playersInPlot[1].Name, spamKickEnabled)
@@ -326,29 +386,41 @@ local function startBaseDefender()
                 end)
             end)
         else
-            -- GUI fallback (simplified)
+            -- GUI fallback method
+            print("⚠️ Using GUI fallback for stealing detection (notification remote not available)")
             local playerGui = LocalPlayer:WaitForChild("PlayerGui")
             local trackedTexts = {}
+            
             RunService.RenderStepped:Connect(function()
                 if not spamKickEnabled and not spamNoKickEnabled then return end
+                
                 for _, gui in ipairs(playerGui:GetDescendants()) do
                     if (gui:IsA("TextLabel") or gui:IsA("TextButton")) and gui.Visible and gui.Text ~= "" then
                         local lowerText = string.lower(stripTags(gui.Text))
+                        
                         if (string.find(lowerText, "stealing", 1, true) or string.find(lowerText, "robbing", 1, true)) and not trackedTexts[gui] then
                             trackedTexts[gui] = true
+                            print("📨 GUI Detection: Found stealing text in GUI")
+                            print("   Text: " .. gui.Text)
+                            
                             task.spawn(function()
-                                task.wait(0.005)
+                                -- Execute immediately, no delays
                                 local playersInPlot = getPlayersInMyPlot()
+            
+                                
                                 if #playersInPlot > 0 then
                                     executeDefense(playersInPlot[1].Name, spamKickEnabled)
                                 end
                             end)
+                            
                             task.delay(5, function() trackedTexts[gui] = nil end)
                             break
                         end
                     end
                 end
             end)
+            
+            print("✅ GUI fallback stealing detection active")
         end
     end)
 end
@@ -694,7 +766,7 @@ local function createToggleButton(text, yPos, enabled)
     return button, btnStroke, switchBG, slider, label, btnGradient
 end
 
--- Create buttons (removed auto-save)
+-- Create buttons
 local spamKickButton, spamKickStroke, spamKickBG, spamKickSlider, spamKickLabel, spamKickGradient = createToggleButton("SPAM IF STEALING (KICK)", 0, spamKickEnabled)
 local spamNoKickButton, spamNoKickStroke, spamNoKickBG, spamNoKickSlider, spamNoKickLabel, spamNoKickGradient = createToggleButton("SPAM IF STEALING (NO KICK)", 40, spamNoKickEnabled)
 local antiTPButton, antiTPStroke, antiTPBG, antiTPSlider, antiTPLabel, antiTPGradient = createToggleButton("ANTI-TP SCAM", 80, antiTPEnabled)
@@ -845,9 +917,27 @@ _G.spamNoKickEnabled = spamNoKickEnabled
 _G.antiTPEnabled = antiTPEnabled
 
 createToggleHandler(spamKickButton, spamKickStroke, spamKickBG, spamKickSlider, spamKickLabel, spamKickGradient, spamKickEnabled, "spamKickEnabled")
--- Spam No Kick is always on, but we still create the handler for visual feedback
 createToggleHandler(spamNoKickButton, spamNoKickStroke, spamNoKickBG, spamNoKickSlider, spamNoKickLabel, spamNoKickGradient, spamNoKickEnabled, "spamNoKickEnabled")
 createToggleHandler(antiTPButton, antiTPStroke, antiTPBG, antiTPSlider, antiTPLabel, antiTPGradient, antiTPEnabled, "antiTPEnabled")
 
-startBaseDefender()
-startAntiTP()
+-- Wait for admin remote to be ready before starting systems
+task.spawn(function()
+    print("⏳ Waiting for admin remote to be ready...")
+    
+    -- Wait up to 15 seconds for remote
+    local maxWait = 15
+    local waited = 0
+    while not adminRemote and waited < maxWait do
+        task.wait(0.5)
+        waited = waited + 0.5
+    end
+    
+    if adminRemote then
+        print("✅ Admin remote ready! Starting protection systems...")
+        startBaseDefender()
+        startAntiTP()
+        print("✅ Base Protector V3 fully loaded!")
+    else
+        warn("❌ Failed to start - admin remote not found after " .. maxWait .. " seconds")
+    end
+end)
