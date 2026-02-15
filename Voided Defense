@@ -13,33 +13,61 @@ local Stats = game:GetService("Stats")
 local LocalPlayer = Players.LocalPlayer
 while not LocalPlayer do task.wait() LocalPlayer = Players.LocalPlayer end
 
--- Remote Detection
+-- Remote Detection - CLEAN VERSION (finds remote after DealWithThis)
 local adminRemote, notificationRemote
 
 task.spawn(function()
-    local Packages = ReplicatedStorage:WaitForChild("Packages", 15)
-    if not Packages then return end
-    local Net = Packages:WaitForChild("Net", 15)
-    if not Net then return end
+    local function findAdminRemote()
+        local Packages = ReplicatedStorage:WaitForChild("Packages", 5)
+        if not Packages then return false end
+        
+        local Net = Packages:WaitForChild("Net", 5)
+        if not Net then return false end
+        
+        local children = Net:GetChildren()
+        
+        -- Find DealWithThis and get the remote AFTER it
+        for i, obj in ipairs(children) do
+            if obj:IsA("RemoteEvent") and obj.Name == "RE/AdminPanelService/DealWithThis" then
+                local nextRemote = children[i + 1]
+                if nextRemote and nextRemote:IsA("RemoteEvent") then
+                    adminRemote = nextRemote
+                    print("✅ Admin Remote Found:", nextRemote.Name)
+                    return true
+                end
+            end
+        end
+        
+        return false
+    end
     
-    local children = Net:GetChildren()
-    local remoteMap = {}
-    
-    for i, obj in ipairs(children) do
-        if obj:IsA("RemoteEvent") then
-            local nextObj = children[i + 1]
-            if nextObj and nextObj:IsA("RemoteEvent") then
-                remoteMap[obj] = nextObj
+    -- Try to find it immediately
+    if not findAdminRemote() then
+        for i = 1, 60 do
+            task.wait(0.5)
+            if findAdminRemote() then
+                break
             end
         end
     end
     
-    for remote, nextRemote in pairs(remoteMap) do
-        if nextRemote.Name == "RE/AdminPanelService/DealWithThis" then
-            adminRemote = remote
-        end
-        if remote.Name:match("NotificationService") or remote.Name:match("Notify") then
-            notificationRemote = nextRemote
+    if not adminRemote then
+        warn("❌ ADMIN REMOTE NOT FOUND!")
+    end
+    
+    -- Find notification remote
+    task.wait(1)
+    local Packages = ReplicatedStorage:FindFirstChild("Packages")
+    if Packages then
+        local Net = Packages:FindFirstChild("Net")
+        if Net then
+            for _, remote in ipairs(Net:GetChildren()) do
+                if remote:IsA("RemoteEvent") and (remote.Name:find("Notification") or remote.Name:find("Notify")) then
+                    notificationRemote = remote
+                    print("✅ Notification Remote Found:", remote.Name)
+                    break
+                end
+            end
         end
     end
 end)
