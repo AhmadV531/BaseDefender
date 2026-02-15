@@ -1,5 +1,5 @@
--- Base Protector V4 - Voided Defense Edition
--- Clean blue GUI with performance stats
+-- Base Protector V5 - Voided Defense Edition [ULTRA OPTIMIZED]
+-- Lightning-fast detection and instant command execution
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -274,15 +274,18 @@ local function getClosestPlayerToBrainrots()
     return closest
 end
 
+-- ⚡ ULTRA-FAST INSTANT COMMAND EXECUTION ⚡
+-- Fire ALL commands simultaneously with NO delays
 local function executeAPSpam(username)
     if not username or username == "" then return end
     local target = playerCache[username]
     if not target then return end
     
-    coroutine.wrap(function() sendCommand("balloon", target) end)()
-    coroutine.wrap(function() sendCommand("inverse", target) end)()
-    coroutine.wrap(function() sendCommand("tiny", target) end)()
-    coroutine.wrap(function() sendCommand("rocket", target) end)()
+    -- INSTANT PARALLEL EXECUTION - All commands fire at the EXACT same time
+    task.spawn(function() sendCommand("balloon", target) end)
+    task.spawn(function() sendCommand("inverse", target) end)
+    task.spawn(function() sendCommand("tiny", target) end)
+    task.spawn(function() sendCommand("rocket", target) end)
 end
 
 local function executeDefense(name)
@@ -304,21 +307,25 @@ local function executeAntiTP(name)
     local target = playerCache[name]
     if not target then antiTPCooldowns[name] = nil return end
     
-    coroutine.wrap(function() sendCommand("balloon", target) end)()
-    coroutine.wrap(function() sendCommand("jail", target) end)()
+    -- ⚡⚡⚡ INSTANT ANTI-TP EXECUTION - Fire directly with NO delays ⚡⚡⚡
+    if adminRemote then
+        task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "balloon") end)
+        task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "jail") end)
+    end
     
     task.delay(5, function() antiTPCooldowns[name] = nil end)
 end
 
--- Anti-TP System
+-- ⚡ ULTRA-FAST Anti-TP System - INSTANT REACTION ⚡
 local function startAntiTP()
     task.spawn(function()
         task.wait(3)
         updatePlotCache()
         local detected = {}
         
-        while task.wait(0.05) do
-            if not _G.antiTPEnabled then continue end
+        -- INSTANT DETECTION - Runs EVERY FRAME for maximum speed (60+ times per second)
+        RunService.RenderStepped:Connect(function()
+            if not _G.antiTPEnabled then return end
             
             for _, p in ipairs(getPlayersInMyPlot()) do
                 if p.Character then
@@ -341,23 +348,32 @@ local function startAntiTP()
                             end
                         end
                         
-                        if close then
+                        if close and not antiTPCooldowns[p.Name] then
                             detected[p.Name] = true
-                            executeAntiTP(p.Name)
+                            antiTPCooldowns[p.Name] = true
+                            
+                            -- ⚡⚡⚡ INSTANT FIRE - Commands execute at EXACT same time ⚡⚡⚡
+                            local target = playerCache[p.Name]
+                            if target and adminRemote then
+                                task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "balloon") end)
+                                task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "jail") end)
+                            end
+                            
+                            task.delay(5, function() antiTPCooldowns[p.Name] = nil end)
                             task.delay(3, function() detected[p.Name] = nil end)
                         end
                     end
                 end
             end
-        end
+        end)
     end)
 end
 
--- Base Defender
+-- ⚡ ULTRA-OPTIMIZED BASE DEFENDER - LIGHTNING FAST DETECTION ⚡
 local function startBaseDefender()
     updatePlotCache()
     
-    -- Method 1: Notification Remote Detection
+    -- Method 1: Notification Remote Detection (INSTANT)
     local function locateStealRemote()
         local packages = ReplicatedStorage:FindFirstChild("Packages")
         if not packages then return nil end
@@ -381,41 +397,171 @@ local function startBaseDefender()
     if stealRemote then
         stealRemote.OnClientEvent:Connect(function(msg)
             if typeof(msg) ~= "string" then return end
-            if not msg:find("Someone is stealing your") then return end
             if not spamNoKickEnabled then return end
+            if not msg:find("Someone is stealing your") then return end
             
+            -- ⚡⚡⚡ INSTANT RESPONSE - ALL commands fire at EXACT same time ⚡⚡⚡
             local players = getPlayersInMyPlot()
             if #players > 0 and not punishedPlayers[players[1].Name] then
-                punishedPlayers[players[1].Name] = true
-                executeAPSpam(players[1].Name)
-                task.delay(30, function() punishedPlayers[players[1].Name] = nil end)
+                local targetName = players[1].Name
+                punishedPlayers[targetName] = true
+                
+                local target = playerCache[targetName]
+                if target and adminRemote then
+                    task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "balloon") end)
+                    task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "inverse") end)
+                    task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "tiny") end)
+                    task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "rocket") end)
+                end
+                
+                task.delay(30, function() punishedPlayers[targetName] = nil end)
             end
         end)
     end
     
-    -- Method 2: GUI Text Detection (Backup - ZERO DELAY)
+    -- ⚡ Method 2: HYPER-OPTIMIZED GUI TEXT DETECTION ⚡
+    -- Uses DUAL detection: GetPropertyChangedSignal + RenderStepped for 100% reliability
     local gui = LocalPlayer:WaitForChild("PlayerGui")
     local tracked = {}
     
+    -- Simplified pattern matching - just look for key words
+    local function hasStealPattern(text)
+        local lower = string.lower(text)
+        return string.find(lower, "steal", 1, true) or 
+               string.find(lower, "rob", 1, true) or
+               string.find(lower, "taking", 1, true)
+    end
+    
+    -- Cache GUI descendants for faster scanning
+    local cachedGuiElements = {}
+    
+    local function updateGuiCache()
+        cachedGuiElements = {}
+        for _, g in ipairs(gui:GetDescendants()) do
+            if (g:IsA("TextLabel") or g:IsA("TextButton")) then
+                table.insert(cachedGuiElements, g)
+            end
+        end
+    end
+    
+    -- Function to execute commands INSTANTLY - all at once
+    local function fireCommands(targetName)
+        if punishedPlayers[targetName] then return end
+        punishedPlayers[targetName] = true
+        
+        local target = playerCache[targetName]
+        if target and adminRemote then
+            -- Fire ALL commands at the EXACT SAME TIME
+            task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "balloon") end)
+            task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "inverse") end)
+            task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "tiny") end)
+            task.spawn(function() adminRemote:FireServer("78a772b6-9e1c-4827-ab8b-04a07838f298", target, "rocket") end)
+        end
+        
+        task.delay(30, function() punishedPlayers[targetName] = nil end)
+    end
+    
+    -- Initial cache
+    updateGuiCache()
+    
+    -- Method A: GetPropertyChangedSignal for existing elements
+    for _, element in ipairs(cachedGuiElements) do
+        element:GetPropertyChangedSignal("Text"):Connect(function()
+            if not spamNoKickEnabled or tracked[element] then return end
+            if not element.Visible or element.Text == "" then return end
+            
+            if hasStealPattern(element.Text) then
+                tracked[element] = true
+                
+                local players = getPlayersInMyPlot()
+                if #players > 0 then
+                    fireCommands(players[1].Name)
+                end
+                
+                task.delay(0.1, function() tracked[element] = nil end)
+            end
+        end)
+        
+        element:GetPropertyChangedSignal("Visible"):Connect(function()
+            if not spamNoKickEnabled or tracked[element] then return end
+            if not element.Visible or element.Text == "" then return end
+            
+            if hasStealPattern(element.Text) then
+                tracked[element] = true
+                
+                local players = getPlayersInMyPlot()
+                if #players > 0 then
+                    fireCommands(players[1].Name)
+                end
+                
+                task.delay(0.1, function() tracked[element] = nil end)
+            end
+        end)
+    end
+    
+    -- Method B: Real-time detection for NEW GUI elements
+    gui.DescendantAdded:Connect(function(descendant)
+        if (descendant:IsA("TextLabel") or descendant:IsA("TextButton")) then
+            table.insert(cachedGuiElements, descendant)
+            
+            descendant:GetPropertyChangedSignal("Text"):Connect(function()
+                if not spamNoKickEnabled or tracked[descendant] then return end
+                if not descendant.Visible or descendant.Text == "" then return end
+                
+                if hasStealPattern(descendant.Text) then
+                    tracked[descendant] = true
+                    
+                    local players = getPlayersInMyPlot()
+                    if #players > 0 then
+                        fireCommands(players[1].Name)
+                    end
+                    
+                    task.delay(0.1, function() tracked[descendant] = nil end)
+                end
+            end)
+            
+            descendant:GetPropertyChangedSignal("Visible"):Connect(function()
+                if not spamNoKickEnabled or tracked[descendant] then return end
+                if not descendant.Visible or descendant.Text == "" then return end
+                
+                if hasStealPattern(descendant.Text) then
+                    tracked[descendant] = true
+                    
+                    local players = getPlayersInMyPlot()
+                    if #players > 0 then
+                        fireCommands(players[1].Name)
+                    end
+                    
+                    task.delay(0.1, function() tracked[descendant] = nil end)
+                end
+            end)
+        end
+    end)
+    
+    gui.DescendantRemoving:Connect(function(descendant)
+        for i, element in ipairs(cachedGuiElements) do
+            if element == descendant then
+                table.remove(cachedGuiElements, i)
+                break
+            end
+        end
+    end)
+    
+    -- Method C: RenderStepped BACKUP (ultra-fast scanning)
     RunService.RenderStepped:Connect(function()
         if not spamNoKickEnabled then return end
         
-        for _, g in ipairs(gui:GetDescendants()) do
-            if (g:IsA("TextLabel") or g:IsA("TextButton")) and g.Visible and g.Text ~= "" and not tracked[g] then
-                local txt = g.Text:gsub("<.->", ""):lower()
-                
-                if txt:find("stealing", 1, true) or txt:find("robbing", 1, true) then
+        for _, g in ipairs(cachedGuiElements) do
+            if g.Visible and g.Text ~= "" and not tracked[g] then
+                if hasStealPattern(g.Text) then
                     tracked[g] = true
                     
                     local players = getPlayersInMyPlot()
-                    if #players > 0 and not punishedPlayers[players[1].Name] then
-                        punishedPlayers[players[1].Name] = true
-                        executeAPSpam(players[1].Name)
-                        task.delay(30, function() punishedPlayers[players[1].Name] = nil end)
+                    if #players > 0 then
+                        fireCommands(players[1].Name)
                     end
                     
-                    tracked[g] = nil
-                    break
+                    task.delay(0.1, function() tracked[g] = nil end)
                 end
             end
         end
@@ -797,17 +943,17 @@ local function executeSpam()
             local farthest = d1 < d2 and p2 or p1
             
             if closestToBrainrot then
-                coroutine.wrap(function() sendCommand("balloon", closestToBrainrot) end)()
-                coroutine.wrap(function() sendCommand("inverse", closestToBrainrot) end)()
-                coroutine.wrap(function() sendCommand("tiny", closestToBrainrot) end)()
-                coroutine.wrap(function() sendCommand("rocket", closestToBrainrot) end)()
+                task.spawn(function() sendCommand("balloon", closestToBrainrot) end)
+                task.spawn(function() sendCommand("inverse", closestToBrainrot) end)
+                task.spawn(function() sendCommand("tiny", closestToBrainrot) end)
+                task.spawn(function() sendCommand("rocket", closestToBrainrot) end)
             end
             
             if farthest then
-                coroutine.wrap(function() sendCommand("morph", farthest) end)()
-                coroutine.wrap(function() sendCommand("jumpscare", farthest) end)()
-                coroutine.wrap(function() sendCommand("ragdoll", farthest) end)()
-                coroutine.wrap(function() sendCommand("jail", farthest) end)()
+                task.spawn(function() sendCommand("morph", farthest) end)
+                task.spawn(function() sendCommand("jumpscare", farthest) end)
+                task.spawn(function() sendCommand("ragdoll", farthest) end)
+                task.spawn(function() sendCommand("jail", farthest) end)
             end
             
             TweenService:Create(spamBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(100, 240, 140)}):Play()
